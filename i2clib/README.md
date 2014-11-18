@@ -63,12 +63,18 @@ So how do you use i2clib in your application?
 
  1. Use the Tivaware DriverLib to initialize the hardware. It really does just fine at that.
 
- 2. You probably need to [understand i2c](#understanding-i2c) to make the next decision in your application.
+   a. Find the base address for the right i2c port. For example, I2C0_BASE, I2C1_BASE, I2C2_BASE, etc.
 
- 3. Provide a base address. For example, I2C0_BASE, I2C1_BASE, I2C2_BASE, etc.
+   b. Reset the i2c hardware, wait for it to complete its reset, configure the pin functions, etc.
+      (This is all part of the Tivaware DriverLib initialization.)
 
- 4. In Master mode, the address must be left-shifted by 1. The LSB or 1's bit is used to signal a read or
-    write.
+ 2. You probably want to [understand i2c](#understanding-i2c) to make the best decisions for
+    your application design.
+
+ 3. In Master mode, the address you send must be left-shifted by 1. The LSB or 1's bit is used to
+    signal a read or write, and is not available for addresses. In other words, i2c addresses can
+    be viewed as 0-127 (before the left-shift by 1) which become only the even numbers 0-254
+    (after the left-shift by 1).
 
  5. In Master mode, only call `i2clib_m_send()` and `i2clib_m_recv()`.
 
