@@ -92,7 +92,7 @@ But if you start to have a lot of devices you might want to tell your Connected 
 be a slave and sometimes be a master. In that case you must carefully test your collision logic (the
 stuff that i2c does when two masters try to initiate something at the same time).
 
-# The simple case: master mode
+**The simple case: master mode**
 
 Since almost everyone using i2clib wants to run in master mode, this explanation assumes the
 Connected Launchpad is in master mode. But i2clib works both as a master and as a slave.
@@ -107,7 +107,7 @@ master.
 The master can "let go of the i2c bus" by sending an I2C STOP at any time. A slave can only talk when
 the master asks to receive bytes, and asks for the address of that slave device.
 
-# Reading, in detail
+**Receiving as Master**
 
 Say you are the master. Say you want to read something. You can't just `i2clib_m_recv()` anywhere.
 You actually must `i2clib_m_send()` first, then `i2clib_m_recv()`, and probably you must tell the
@@ -123,7 +123,7 @@ failed. Only the received data itself can be taken as a success or a failure.
 (Typically a value of 255 or 0xff indicates failure because that is what the bus looks like
 when no one is talking at all.)
 
-# Sending and receiving as a slave
+**Sending and receiving as Slave**
 
 You must call different functions when in slave mode.
 
