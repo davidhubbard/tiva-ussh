@@ -10,6 +10,8 @@ Hopefully you can at least use this library as a starting point, since it is sma
 **Table of Contents**
 - [Installation](#installation)
 - [Writing Your Own i2c Application](#writing-your-own-i2c-application)
+- [i2clib HOWTO][#i2clib-howto]
+- [Understanding i2c][#understanding-i2c]
 - [License](#license)
 
 Installation
@@ -53,6 +55,77 @@ i2clib is designed to facilitate that.
 In `Makefile` you can replace all occurrences of "example-main" with your own app name. Then
 rename the `example-main.c` file to that name.
 
+
+i2clib HOWTO
+------------
+
+So how do you use i2clib in your application?
+
+ 1. Use the Tivaware DriverLib to initialize the hardware. It really does just fine at that.
+
+ 2. You probably need to [understand i2c][#understanding-i2c] to make the next decision in your application.
+
+ 3. Provide a base address. For example, I2C0_BASE, I2C1_BASE, I2C2_BASE, etc.
+
+ 4. Shift left addresses by 1. Strictly speaking this is optional, but the LSB or 1's bit is used
+    to signal a read or write.
+
+Understanding i2c
+-----------------
+
+[i2c](http://en.wikipedia.org/wiki/I2C) is a brilliantly simple protocol that only uses 2 wires.
+
+The 2 wires are:
+- SDA ("Serial Data")
+- SCL ("Serial Clock")
+
+Both wires must have one pull-up resistor each. It turns out the Connected Launchpad can even generate an
+"internal pullup" if you want. Since that is part of the Tivaware DriverLib initialization step, it is
+not described here.
+
+After all your devices are connected to SDA and SCL, you must decide which devices are to be a "master"
+and which are to be a "slave." Don't worry: electronic devices don't have feelings and are perfectly happy
+to be enslaved on an i2c bus. **Master devices are in charge of initiating everything.** Also, most i2c
+devices you might try to hook up to your Connected Launchpad are slaves and cannot be a master anyway.
+
+But if you start to have a lot of devices you might want to tell your Connected Launchpad to sometimes
+be a slave and sometimes be a master. In that case you must carefully test your collision logic (the
+stuff that i2c does when two masters try to initiate something at the same time).
+
+# The simple case: master mode
+
+Since almost everyone using i2clib wants to run in master mode, this explanation assumes the
+Connected Launchpad is in master mode. But i2clib works both as a master and as a slave.
+
+In master mode, you call `i2clib_m_send()`. The `m` is for master, and `i2clib_m_send()` is what wakes up
+all the slaves and takes command of the bus. This is called an I2C START.
+
+First the master sends I2C START, then it sends an address, then some bytes, and last of all
+(if the master wants to receive bytes), a slave starts talking and sends bytes to the
+master.
+
+The master can "let go of the i2c bus" by sending an I2C STOP at any time. A slave can only talk when
+the master asks to receive bytes, and asks for the address of that slave device.
+
+# Reading, in detail
+
+Say you are the master. Say you want to read something. You can't just `i2clib_m_recv()` anywhere.
+You actually must `i2clib_m_send()` first, then `i2clib_m_recv()`, and probably you must tell the
+slave during the `i2clib_m_send()` how many bytes you will be reading.
+
+`i2clib_m_send()` takes as a parameter an address. The LSB (with a value of 1) of the address must
+be set to 1 to tell the slave to prepare for a read. Carefully study the slave's datasheet and
+documentation to find out if you must also supply the number of bytes to the slave.
+
+The `i2clib_m_recv()` will happily read forever, even bogus data the slave did not send.
+The i2c bus does not include a signal **from the slave** saying that `i2clib_m_recv()` succeeded or
+failed. Only the received data itself can be taken as a success or a failure.
+(Typically a value of 255 or 0xff indicates failure because that is what the bus looks like
+when no one is talking at all.)
+
+# Sending and receiving as a slave
+
+You must call different functions when in slave mode.
 
 License
 -------
