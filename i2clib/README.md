@@ -10,7 +10,8 @@ Hopefully you can at least use this library as a starting point, since it is sma
 Installation
 ------------
 
-There is one file from the Zip file SW-EK-TM4C1294XL-2.1.0.12573.exe (Yes, it is a
+There is one file from the Zip file
+[SW-EK-TM4C1294XL-2.1.0.12573.exe](http://www.ti.com/tool/sw-ek-tm4c1294xl) (Yes, it is a
 zip file and any unzip program on any modern OS will extract the contents. It *does* spew its
 files into the current dir though. Fair warning.)
 
