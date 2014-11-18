@@ -76,9 +76,18 @@ So how do you use i2clib in your application?
     be viewed as 0-127 (before the left-shift by 1) which become only the even numbers 0-254
     (after the left-shift by 1).
 
- 5. In Master mode, only call `i2clib_m_send()` and `i2clib_m_recv()`.
+ 4. In Master mode, only call `i2clib_m_send()` and `i2clib_m_recv()`.
 
- 6. In Slave mode, only call `i2clib_s_send()` and `i2clib_s_recv()`.
+ 5. In Master mode, you must signal that you intend to read by first calling `i2clib_m_send()` with
+    the LSB (1's bit) set to 1. At that time you may also send bytes. After signalling a read, you
+    must read by calling `i2clib_m_recv()`. The down side is that if you don't follow this
+    sequence, the Connected Launchpad i2c hardware never flips the expected bits and i2clib
+    freezes.
+
+ 6. Do not blindly ignore an error returned from any i2clib function. If an error is returned,
+    the master must give up and go back to I2C START which is done by calling `i2clib_m_send()`.
+
+ 7. In Slave mode, only call `i2clib_s_send()` and `i2clib_s_recv()`.
 
 Understanding i2c
 -----------------
