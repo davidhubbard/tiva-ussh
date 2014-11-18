@@ -2,9 +2,31 @@ i2clib
 ======
 
 This library was born because the Connected Launchpad i2c hardware state machine is complicated.
-The i2c state machine of the MSP430 and AVR lines are so simple it hardly makes sense.
+The i2c state machine of the MSP430 and AVR lines are so simple it hardly makes sense that it should
+be this hard to use i2c on the Connected Launchpad.
 
 Hopefully you can at least use this library as a starting point, since it is small and well documented.
+
+Installation
+------------
+
+There is one file from the Zip file SW-EK-TM4C1294XL-2.1.0.12573.exe (Yes, it is a
+zip file and any unzip program on any modern OS will extract the contents. It *does* spew its
+files into the current dir though. Fair warning.)
+
+`project.ld`
+
+This file is used by `ld` to assemble the `example-main.bin` file when you type `make`. It is
+the formal definition of how to assemble the flash image for a Connected Launchpad, so get it
+from TI.com.
+
+Then run `make`. You should see:
+
+`$ make
+  CC    example-main.c
+  CC    startup_gcc.c
+  LD    example-main.elf 
+$`
 
 License
 -------
