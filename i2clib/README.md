@@ -71,28 +71,32 @@ So how do you use i2clib in your application?
  2. You probably want to [understand i2c](#understanding-i2c) to make the best decisions for
     your application design.
 
- 3. In Master mode, the address you send must be left-shifted by 1. The LSB or 1's bit is used to
-    signal a read or write, and is not available for addresses. In other words, i2c addresses can
-    be viewed as 0-127 (before the left-shift by 1) which become only the even numbers 0-254
-    (after the left-shift by 1).
+ 3. In Master mode:
 
- 4. In Master mode, only call `i2clib_m_send()` and `i2clib_m_recv()`.
+   a. The address you send must be left-shifted by 1. The LSB or 1's bit is used to
+      signal a read or write, and is not available for addresses. In other words, i2c addresses can
+      be viewed as 0-127 (before the left-shift by 1) which become only the even numbers 0-254
+      (after the left-shift by 1).
 
- 5. In Master mode, you must signal that you intend to read by first calling `i2clib_m_send()` with
-    the LSB (1's bit) set to 1. At that time you may also send bytes. After signalling a read, you
-    must read by calling `i2clib_m_recv()`. The down side is that if you don't follow this
-    sequence, the Connected Launchpad i2c hardware never flips the expected bits and i2clib
-    freezes.
+   b. only call `i2clib_m_send()` and `i2clib_m_recv()`.
 
- 6. Do not blindly ignore an error returned from any i2clib function. If an error is returned,
-    the master must give up and go back to I2C START which is done by calling `i2clib_m_send()`.
+   c. Signal that you intend to read by first calling `i2clib_m_send()` with the address LSB (1's bit)
+      set to 1. You may also send bytes at the same time. If signalling a read, do not forget to call
+      `i2clib_m_recv()`. The downside is that if you don't follow these rules, the Connected Launchpad
+      i2c hardware never flips the expected bits and i2clib freezes.
 
- 7. In Slave mode, only call `i2clib_s_send()` and `i2clib_s_recv()`.
+ 4. Do not blindly ignore an error returned from any i2clib function. If an error is returned,
+    the master must give up and restart from the first `i2clib_m_send()`. If a slave receives an
+    error, it must give up and restart from the first `i2clib_s_recv()`.
+
+ 5. In Slave mode:
+
+   a. Only call `i2clib_s_send()` and `i2clib_s_recv()`.
 
 Understanding i2c
 -----------------
 
-[i2c](http://en.wikipedia.org/wiki/I2C) is a brilliantly simple protocol that only uses 2 wires.
+[i2cis a brilliantly simple protocol](http://en.wikipedia.org/wiki/I2C) that only uses 2 wires.
 
 The 2 wires are:
 - SDA ("Serial Data")
