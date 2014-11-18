@@ -57,18 +57,20 @@ rename the `example-main.c` file to that name.
 
 
 libti2cit HOWTO
-------------
+---------------
 
 So how do you use libti2cit in your application?
 
-1. Use the Tivaware DriverLib to initialize the hardware. It really does just fine at that.
+1. Do the [installation](#installation) step to copy project.ld into the source directory.
+
+2. Use the Tivaware DriverLib to initialize the hardware. It really does just fine at that.
 
   a. Find the base address for the right i2c port. For example, I2C0_BASE, I2C1_BASE, I2C2_BASE, etc.
 
   b. Reset the i2c hardware, wait for it to complete its reset, configure the pin functions, etc.
      (This is all part of the Tivaware DriverLib initialization.)
 
-2. You probably want to [understand i2c](#understanding-i2c) to make the best decisions for
+3. You probably want to [understand i2c](#understanding-i2c) to make the best decisions for
    your application design.
 
   a. Master or Slave mode.
@@ -79,7 +81,7 @@ So how do you use libti2cit in your application?
 
   d. uDMA or not.
 
-3. In Master mode:
+4. In Master mode:
 
   a. The address you send must be left-shifted by 1. The LSB or 1's bit is used to
      signal a read or write, and is not available for addresses. In other words, i2c addresses can
