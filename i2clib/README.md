@@ -92,9 +92,14 @@ and which are to be a "slave." Don't worry: electronic devices don't have feelin
 to be enslaved on an i2c bus. **Master devices are in charge of initiating everything.** Also, most i2c
 devices you might try to hook up to your Connected Launchpad are slaves and cannot be a master anyway.
 
-But if you start to have a lot of devices you might want to tell your Connected Launchpad to sometimes
+An i2c slave can never spontaneously send data to its master. This may mean the master has to check
+back with the slave constantly, which becomes a lot of work for the master. But it can keep your code
+clean because the master controls all the timing.
+
+If you start to have a lot of devices you might want to tell your Connected Launchpad to sometimes
 be a slave and sometimes be a master. In that case you must carefully test your collision logic (the
-stuff that i2c does when two masters try to initiate something at the same time).
+stuff that i2c does when two masters try to initiate something at the same time.) And if you're doing
+it that way, you're way past needing me to explain things to you. :)
 
 **The simple case: master mode**
 
@@ -130,7 +135,7 @@ when no one is talking at all.)
 **Sending and receiving as Slave**
 
 You must call different functions when in slave mode. Do not call `i2clib_m_send()` or
-`i2clib_m_recv()`. Your application will probably freeze as it tries to access the hardware and
+`i2clib_m_recv()` or your application will probably freeze as it tries to access the hardware and
 the hardware does not respond.
 
 The correct functions in slave mode are `i2clib_s_send()` and `i2clib_s_recv()`. You may notice
