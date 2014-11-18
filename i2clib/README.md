@@ -61,37 +61,43 @@ i2clib HOWTO
 
 So how do you use i2clib in your application?
 
- 1. Use the Tivaware DriverLib to initialize the hardware. It really does just fine at that.
+1. Use the Tivaware DriverLib to initialize the hardware. It really does just fine at that.
 
-   a. Find the base address for the right i2c port. For example, I2C0_BASE, I2C1_BASE, I2C2_BASE, etc.
+  a. Find the base address for the right i2c port. For example, I2C0_BASE, I2C1_BASE, I2C2_BASE, etc.
 
-   b. Reset the i2c hardware, wait for it to complete its reset, configure the pin functions, etc.
-      (This is all part of the Tivaware DriverLib initialization.)
+  b. Reset the i2c hardware, wait for it to complete its reset, configure the pin functions, etc.
+     (This is all part of the Tivaware DriverLib initialization.)
 
- 2. You probably want to [understand i2c](#understanding-i2c) to make the best decisions for
-    your application design.
+2. You probably want to [understand i2c](#understanding-i2c) to make the best decisions for
+   your application design.
 
- 3. In Master mode:
+3. In Master mode:
 
-   a. The address you send must be left-shifted by 1. The LSB or 1's bit is used to
-      signal a read or write, and is not available for addresses. In other words, i2c addresses can
-      be viewed as 0-127 (before the left-shift by 1) which become only the even numbers 0-254
-      (after the left-shift by 1).
+  a. The address you send must be left-shifted by 1. The LSB or 1's bit is used to
+     signal a read or write, and is not available for addresses. In other words, i2c addresses can
+     be viewed as 0-127 (before the left-shift by 1) which become only the even numbers 0-254
+     (after the left-shift by 1).
 
-   b. only call `i2clib_m_send()` and `i2clib_m_recv()`.
+  b. only call `i2clib_m_send()` and `i2clib_m_recv()`.
 
-   c. Signal that you intend to read by first calling `i2clib_m_send()` with the address LSB (1's bit)
-      set to 1. You may also send bytes at the same time. If signalling a read, do not forget to call
-      `i2clib_m_recv()`. The downside is that if you don't follow these rules, the Connected Launchpad
-      i2c hardware never flips the expected bits and i2clib freezes.
+  c. Signal that you intend to read by first calling `i2clib_m_send()` with the address LSB (1's bit)
+     set to 1. You may also send bytes at the same time. If signalling a read, do not forget to call
+     `i2clib_m_recv()`. The downside is that if you don't follow these rules, the Connected Launchpad
+     i2c hardware never flips the expected bits and i2clib freezes.
 
- 4. Do not blindly ignore an error returned from any i2clib function. If an error is returned,
-    the master must give up and restart from the first `i2clib_m_send()`. If a slave receives an
-    error, it must give up and restart from the first `i2clib_s_recv()`.
+  d. Do not blindly ignore an error returned from any i2clib function. If an error is returned,
+     the master must give up and restart from the first `i2clib_m_send()`.
 
- 5. In Slave mode:
+5. In Slave mode:
 
-   a. Only call `i2clib_s_send()` and `i2clib_s_recv()`.
+  a. Only call `i2clib_s_send()` and `i2clib_s_recv()`.
+
+  b.
+
+  c.
+
+  d. Do not blindly ignore an error returned from any i2clib function.  If a slave receives an
+     error, it must give up and restart from the first `i2clib_s_recv()`.
 
 Understanding i2c
 -----------------
