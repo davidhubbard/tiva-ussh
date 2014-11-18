@@ -17,10 +17,10 @@ files into the current dir though. Fair warning.)
 
 `project.ld` <-- Find this file.
 
-This file is used by `ld` to assemble the `example-main.bin` file when you type `make`. It is
-the formal definition of how to assemble the flash image for a Connected Launchpad, so get it
-from the zip file available on TI.com. At last check it is under `examples/project/project.ld`.
-Copy it into the current directory where this README lives.
+It is used by `ld` to assemble `example-main.bin` when you type `make`. It is the formal definition
+of how to assemble the flash image for a Connected Launchpad, so get it from the zip file available
+on TI.com. I found it under `examples/project/project.ld`. Copy `project.ld` into the current
+directory where this README lives.
 
 Then run `make`. You should see:
 
@@ -34,6 +34,20 @@ $
 
 Finally you can run `make lm4flash` or just run `lm4flash` yourself. This will program the
 flash image to your device.
+
+Writing Your Own i2c Application
+--------------------------------
+
+The easiest way to write an i2c application from this code is to use `example-main.c` as a template
+and iterate until it meets your requirements.
+
+Embedded development protip: compile and flash a working build to your device, early and often.
+
+i2clib is designed to facilitate that.
+
+In `Makefile` you can replace all occurrences of "example-main" with your own app name. Then
+rename the `example-main.c` file to that name.
+
 
 License
 -------
