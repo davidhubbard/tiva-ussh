@@ -63,12 +63,16 @@ So how do you use i2clib in your application?
 
  1. Use the Tivaware DriverLib to initialize the hardware. It really does just fine at that.
 
- 2. You probably need to [understand i2c][#understanding-i2c] to make the next decision in your application.
+ 2. You probably need to [understand i2c](#understanding-i2c) to make the next decision in your application.
 
  3. Provide a base address. For example, I2C0_BASE, I2C1_BASE, I2C2_BASE, etc.
 
- 4. Shift left addresses by 1. Strictly speaking this is optional, but the LSB or 1's bit is used
-    to signal a read or write.
+ 4. In Master mode, the address must be left-shifted by 1. The LSB or 1's bit is used to signal a read or
+    write.
+
+ 5. In Master mode, only call `i2clib_m_send()` and `i2clib_m_recv()`.
+
+ 6. In Slave mode, only call `i2clib_s_send()` and `i2clib_s_recv()`.
 
 Understanding i2c
 -----------------
@@ -125,7 +129,13 @@ when no one is talking at all.)
 
 **Sending and receiving as Slave**
 
-You must call different functions when in slave mode.
+You must call different functions when in slave mode. Do not call `i2clib_m_send()` or
+`i2clib_m_recv()`. Your application will probably freeze as it tries to access the hardware and
+the hardware does not respond.
+
+The correct functions in slave mode are `i2clib_s_send()` and `i2clib_s_recv()`. You may notice
+they do not need an address. You set the slave address using the Tivaware DriverLib, and wait
+for the master to initiate a transfer.
 
 License
 -------
