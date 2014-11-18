@@ -8,10 +8,8 @@ be this hard to use i2c on the Connected Launchpad.
 Hopefully you can at least use this library as a starting point, since it is small and well documented.
 
 **Table of Contents**
-
-[Installation](#installation)
-
-[Writing Your Own i2c Application](#writing-your-own-i2c-application)
+- [Installation](#installation)
+- [Writing Your Own i2c Application](#writing-your-own-i2c-application)
 
 Installation
 ------------
