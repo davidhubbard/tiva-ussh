@@ -10,16 +10,17 @@ Hopefully you can at least use this library as a starting point, since it is sma
 Installation
 ------------
 
-There is one file from the Zip file
+You need to extract one file from inside the Zip file
 [SW-EK-TM4C1294XL-2.1.0.12573.exe](http://www.ti.com/tool/sw-ek-tm4c1294xl) (Yes, it is a
 zip file and any unzip program on any modern OS will extract the contents. It *does* spew its
 files into the current dir though. Fair warning.)
 
-`project.ld`
+`project.ld` <-- Find this file.
 
 This file is used by `ld` to assemble the `example-main.bin` file when you type `make`. It is
 the formal definition of how to assemble the flash image for a Connected Launchpad, so get it
-from TI.com.
+from the zip file available on TI.com. At last check it is under `examples/project/project.ld`.
+Copy it into the current directory where this README lives.
 
 Then run `make`. You should see:
 
