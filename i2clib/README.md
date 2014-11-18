@@ -22,11 +22,16 @@ from TI.com.
 
 Then run `make`. You should see:
 
-`$ make
+```
+$ make
   CC    example-main.c
   CC    startup_gcc.c
   LD    example-main.elf 
-$`
+$
+```
+
+Finally you can run `make lm4flash` or just run `lm4flash` yourself. This will program the
+flash image to your device.
 
 License
 -------
