@@ -1,5 +1,5 @@
 /* Copyright (c) 2014 David Hubbard github.com/davidhubbard
- * Example startup file for tiva-ussh i2clib example.
+ * Example startup file for tiva-ussh libti2cit example.
  * Licensed under the GNU LGPL v3.
  *
  * The most common reason you would need to edit this file is to add or change an
@@ -12,7 +12,7 @@
 
 /*
  * Interrupt Service Routines (ISR's) must return void and must take no arguments.
- /
+ */
 typedef void (* const int_vector_t)();
 
 

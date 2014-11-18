@@ -1,5 +1,5 @@
 #
-# tiva-ussh Makefile Copyright (c) 2014 David Hubbard github.com/davidhubbard
+# tiva-ussh libti2cit Makefile Copyright (c) 2014 David Hubbard github.com/davidhubbard
 # Licensed under the GNU LGPL v3. See README.md for more information.
 #
 
@@ -15,11 +15,13 @@ all: $(TARGET)
 clean:
 	rm -rf $(TARGET) *.o
 
-lm4flash:
+lm4flash: all
 	@echo "Programming device with: $(TARGET:.elf=.bin)"
 	lm4flash $(TARGET:.elf=.bin)
 
-$(TARGET): $(TARGET:.elf=.o) startup_${COMPILER}.o project.ld
+$(TARGET): $(TARGET:.elf=.o) libti2cit.o startup_${COMPILER}.o project.ld
+
+libti2cit.o: libti2cit.c libti2cit.h
 
 SCATTERgcc_example-main=project.ld
 ENTRY_example-main=ResetISR
