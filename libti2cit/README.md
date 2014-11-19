@@ -81,6 +81,7 @@ So how do you use libti2cit in your application?
     * Interrupts, no FIFO: free up the Connected Launchpad to do other things (or sleep).
     * Interrupts, FIFO Burst: slightly faster, or more time spent sleeping.
     * Interrupts, FIFO Burst, uDMA: fastest, or most time spent sleeping.
+
   There are examples for each option in `example-main.c`.
 
 4. In Master mode:
