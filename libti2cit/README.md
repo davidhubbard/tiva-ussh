@@ -76,11 +76,12 @@ So how do you use libti2cit in your application?
   a. Master or Slave mode.
 
   b. Hardware options:
-    * Polling, no FIFO
-    * Polling, FIFO Burst
-    * Interrupts, no FIFO
-    * Interrupts, FIFO Burst
-    * Interrupts, FIFO Burst, uDMA
+    * Polling, no FIFO: the simplest way to write and debug code.
+    * Polling, FIFO Burst: slightly faster.
+    * Interrupts, no FIFO: free up the Connected Launchpad to do other things (or sleep).
+    * Interrupts, FIFO Burst: slightly faster, or more time spent sleeping.
+    * Interrupts, FIFO Burst, uDMA: fastest, or most time spent sleeping.
+  There are examples for each option in `example-main.c`.
 
 4. In Master mode:
 
