@@ -75,11 +75,12 @@ So how do you use libti2cit in your application?
 
   a. Master or Slave mode.
 
-  b. Polling or Interrupts.
-
-  c. FIFO Burst or not.
-
-  d. uDMA or not.
+  b. Hardware options:
+    * Polling, no FIFO
+    * Polling, FIFO Burst
+    * Interrupts, no FIFO
+    * Interrupts, FIFO Burst
+    * Interrupts, FIFO Burst, uDMA
 
 4. In Master mode:
 
@@ -91,9 +92,9 @@ So how do you use libti2cit in your application?
   b. Only call `libti2cit_m_send()` and `libti2cit_m_recv()` (do not call any `libti2cit_s_...` functions)
 
   c. Signal that you intend to read by first calling `libti2cit_m_send()` with the address LSB (1's bit)
-     set to 1. You may also send bytes at the same time. If signalling a read, do not forget to call
-     `libti2cit_m_recv()`. The downside is that if you don't follow these rules, the Connected Launchpad
-     i2c hardware never flips the expected bits and libti2cit freezes.
+     set to 1. You may also send bytes at the same time. If you signal a read, do not forget to call
+     `libti2cit_m_recv()` to complete the read. The downside is that if you don't follow these rules,
+     the Connected Launchpad i2c hardware never flips the expected bits and libti2cit freezes.
 
   d. Do not blindly ignore an error returned from any libti2cit function. If an error is returned,
      the master must give up and restart from the first `libti2cit_m_send()`.
