@@ -2,3 +2,4 @@
 *.elf
 project.ld
 example-main.bin
+openocd.log

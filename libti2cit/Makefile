@@ -19,9 +19,12 @@ lm4flash: all
 	@echo "Programming device with: $(TARGET:.elf=.bin)"
 	lm4flash $(TARGET:.elf=.bin)
 
-$(TARGET): $(TARGET:.elf=.o) libti2cit.o startup_${COMPILER}.o project.ld
+$(TARGET): $(TARGET:.elf=.o) example-poll.o example-isr.o \
+	libti2cit.o startup_${COMPILER}.o project.ld
 
 libti2cit.o: libti2cit.c libti2cit.h
+example-poll.o: example-main.h example-poll.c
+example-isr.o: example-main.h example-isr.c
 
 SCATTERgcc_example-main=project.ld
 ENTRY_example-main=ResetISR

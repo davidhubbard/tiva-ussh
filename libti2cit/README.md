@@ -99,18 +99,19 @@ So how do you use libti2cit in your application?
      the Connected Launchpad i2c hardware never flips the expected bits and libti2cit freezes.
 
   d. Do not blindly ignore an error returned from any libti2cit function. If an error is returned,
-     the master must give up and restart from the first `libti2cit_m_send()`.
+     the master must give up and restart with a `libti2cit_m_send()`.
 
 5. In Slave mode:
 
-  a. Only call `libti2cit_s_send()` and `libti2cit_s_recv()` (do not call any `libti2cit_m_...` functions)
+  a. Only call `libti2cit_s_wait()` and other `libti2cit_s_...()` functions
+     (do not call any `libti2cit_m_...` functions)
 
   b.
 
   c.
 
-  d. Do not blindly ignore an error returned from any libti2cit function.  If a slave receives an
-     error, it must give up and restart from the first `libti2cit_s_recv()`.
+  d. Do not blindly ignore an error returned from any libti2cit function. If an error is returned,
+     the slave must give up and restart from `libti2cit_s_wait()`.
 
 Understanding i2c
 -----------------
@@ -190,7 +191,7 @@ Here is some example code:
 
 **Sending and receiving as Slave**
 
-You call different functions when in slave mode: `libti2cit_s_send()` and `libti2cit_s_recv()`. You
+Slave mode works differently. `libti2cit_s_wait()`
 may notice they do not need an address. You set the slave address using the Tivaware DriverLib,
 and wait for the master to talk to you.
 
