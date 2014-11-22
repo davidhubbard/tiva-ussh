@@ -77,7 +77,8 @@ So how do you use libti2cit in your application?
 
   b. Hardware options:
     * Polling, no FIFO: the simplest way to write and debug code.
-    * Polling, FIFO Burst: slightly faster.
+    * Polling, FIFO Burst: slightly more efficient. Note: I decided not to implement this variant
+      in libti2cit because it has no advantage in terms of absolute power draw or system throughput.
     * Interrupts, no FIFO: free up the Connected Launchpad to do other things (or sleep).
     * Interrupts, FIFO Burst: slightly faster, or more time spent sleeping.
     * Interrupts, FIFO Burst, uDMA: fastest, or most time spent sleeping.
