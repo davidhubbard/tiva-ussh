@@ -30,7 +30,7 @@ static uint32_t libti2cit_m_continue(uint32_t base, uint32_t cmd) {
 
 /* see description in libti2cit.h
  */
-uint8_t libti2cit_m_sync_send(uint32_t base, uint8_t addr, uint8_t len, const uint8_t * buf) {
+uint8_t libti2cit_m_sync_send(uint32_t base, uint8_t addr, uint32_t len, const uint8_t * buf) {
 	uint8_t cmd = I2C_MASTER_CMD_QUICK_COMMAND;
 	uint32_t mris_want = I2C_MRIS_RIS | I2C_MRIS_STOPRIS;	// case 1: len == 0 && (addr & 1) == 0
 
@@ -45,6 +45,7 @@ uint8_t libti2cit_m_sync_send(uint32_t base, uint8_t addr, uint8_t len, const ui
 
 		} else if (addr & 1) {
 			cmd = I2C_MASTER_CMD_BURST_RECEIVE_START;
+			HWREG(base + I2C_O_MIMR) |= I2C_MIMR_STARTIM;	// a START actually will NOT happen, no interrupt will fire: abuse this bit to signal a repeated start for libti2cit_m_sync_recvpart()
 			mris_want = I2C_MRIS_RIS;	// case 3: len == 0 && (addr & 1) == 1
 		}
 
@@ -69,9 +70,11 @@ uint8_t libti2cit_m_sync_send(uint32_t base, uint8_t addr, uint8_t len, const ui
 
 /* see description in libti2cit.h
  */
-uint8_t libti2cit_m_sync_recv(uint32_t base, uint8_t len, uint8_t * buf) {
+uint8_t libti2cit_m_sync_recv(uint32_t base, uint32_t len, uint8_t * buf) {
+	HWREG(base + I2C_O_MIMR) &= ~I2C_MIMR_STARTIM;	// bit was set in case libti2cit_m_sync_recvpart() would be called, clear it now
+
 	// first byte was already received by i2c state machine
-	if (!len) {	// len must be non-zero
+	if (!len) {	// len cannot be zero. first byte was already received so len is at least 1!
 		ROM_I2CMasterControl(base, I2C_MASTER_CMD_FIFO_BURST_RECEIVE_ERROR_STOP);
 		return 1;
 	}
@@ -85,198 +88,269 @@ uint8_t libti2cit_m_sync_recv(uint32_t base, uint8_t len, uint8_t * buf) {
 	return 0;
 }
 
+/* see description in libti2cit.h
+ */
+uint8_t libti2cit_m_sync_recvpart(uint32_t base, uint32_t len, uint8_t * buf)
+{
+	uint32_t mimr = HWREG(base + I2C_O_MIMR);
+	if (mimr & I2C_MIMR_STARTIM) {	// if this is the first time calling libti2cit_m_sync_recvpart()
+		HWREG(base + I2C_O_MIMR) = mimr & ~I2C_MIMR_STARTIM;
+		if (!len) {	// first receive some bytes!
+			ROM_I2CMasterControl(base, I2C_MASTER_CMD_FIFO_BURST_RECEIVE_ERROR_STOP);
+			return 1;
+		}
+
+		// first byte already received by i2c hardware
+		*(buf++) = HWREG(base + I2C_O_MDR); /* a.k.a. ROM_I2CMasterDataGet() */
+		len--;
+	} else if (!len) {
+		libti2cit_m_continue(base, I2C_MASTER_CMD_BURST_RECEIVE_FINISH);
+		libti2cit_mris_wait(base, I2C_MRIS_STOPRIS | I2C_MRIS_RIS, 0);
+		return 0;
+	}
+
+	while (len) {
+		libti2cit_m_continue(base, I2C_MASTER_CMD_BURST_RECEIVE_CONT);
+		*(buf++) = HWREG(base + I2C_O_MDR); /* a.k.a. ROM_I2CMasterDataGet() */
+		len--;
+	}
+	return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 /* see description in libti2cit.h
  */
-uint32_t libti2cit_int_clear(uint32_t base) {
-	uint32_t status = HWREG(base + I2C_O_MMIS);
+uint32_t libti2cit_int_clear(libti2cit_int_st * st)
+{
+	uint32_t status = HWREG(st->base + I2C_O_MMIS);
 
-	HWREG(base + I2C_O_MICR) = status;
+	HWREG(st->base + I2C_O_MICR) = status;
 	if (status == I2C_MMIS_MIS) {
 		/* Workaround for I2C master interrupt clear errata for rev B Tiva
 		 * devices.  For later devices, this write is ignored and therefore
 		 * harmless other than the slight performance hit.
 		 */
-		HWREG(base + I2C_O_MMIS) = I2C_MMIS_MIS;
+		HWREG(st->base + I2C_O_MMIS) = I2C_MMIS_MIS;
 	}
 
 	return status;
 }
 
+static uint32_t libti2cit_m_isr_finish(libti2cit_int_st * st, uint32_t status)
+{
+	libti2cit_m_isr_set_isr_cb(st, 0);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-static void (* isr_cb)(uint32_t base, uint32_t status) = 0;
-static libti2cit_status_cb isr_user_cb = 0;
-static libti2cit_read_cb isr_user_read_cb = 0;
-static uint32_t isr_len = 0, isr_nread = 0;
-static uint8_t * isr_buf = 0;
-
-static uint32_t libti2cit_m_isr_finish(uint32_t status) {
-	if (!isr_user_cb && !isr_user_read_cb) {
-		//UARTsend("!isr_user_{read}_cb\r\n");
+	if (!st->user_cb) {
+		//UARTsend("!isr_user_cb\r\n");
 		return status | LIBTI2CIT_ISR_UNEXPECTED;
 	}
 
-	libti2cit_status_cb u = isr_user_cb;
-	libti2cit_read_cb ur = isr_user_read_cb;
-	if (u) u(status);
-	if (ur) ur(status, isr_nread);
+	if (st->user_cb) st->user_cb(st, status);
 	return status;
 }
 
-void libti2cit_isr_clear() {
-	isr_user_cb = 0;
-	isr_user_read_cb = 0;
+static void libti2cit_m_isr_set_isr_cb(libti2cit_int_st * st, libti2cit_status_cb cb)
+{
+	union {
+		void * as_void;
+		libti2cit_status_cb as_cb;
+	} punned;
+	punned.as_cb = cb;
+	st->private_ = punned.as_void;
+}
+static void libti2cit_m_isr_call_isr_cb(libti2cit_int_st * st, uint32_t status)
+{
+	union {
+		void * as_void;
+		libti2cit_status_cb as_cb;
+	} punned;
+	punned.as_void = st->private_;
+	punned.as_cb(st, status);
 }
 
 /* see description in libti2cit.h
  */
-uint32_t libti2cit_m_isr_isr(uint32_t base) {
-	uint32_t status = libti2cit_int_clear(base);
+uint32_t libti2cit_m_isr_isr(libti2cit_int_st * st)
+{
+	uint32_t status = libti2cit_int_clear(st);
 
 	if (status & I2C_MIMR_NACKIM) {
-		if (!isr_user_cb && !isr_user_read_cb) {
-			//UARTsend("!isr_user_{read}_cb\r\n");
+		if (!st->user_cb) {
+			//UARTsend("!isr_user_cb\r\n");
 			status |= LIBTI2CIT_ISR_UNEXPECTED;	// signal UNEXPECTED
 		}
-	} else {
-		// normal isr_cb
-		if (isr_cb) {
-			isr_cb(base, status);
+		return libti2cit_m_isr_finish(st, status);
+	}
 
-			if (HWREG(base + I2C_O_MCS) & I2C_MCS_ARBLST) {
-				status |= LIBTI2CIT_ISR_MCS_ARBLST;
-				//if (HWREG(base + I2C_O_MCS) & I2C_MCS_ARBLST) UARTsend("MCS: arblst\r\n");
-			}
-			return status;
-		}
+	if (!st->private_) {
 		// isr_cb was not set...UNEXPECTED
 		//UARTsend("!isr_cb\r\n");
 		status |= LIBTI2CIT_ISR_UNEXPECTED;
+		return libti2cit_m_isr_finish(st, status);
 	}
-	return libti2cit_m_isr_finish(status);
+
+	// normal isr_cb
+	libti2cit_m_isr_call_isr_cb(st, status);
+	return status;
 }
 
-static void libti2cit_m_isr_nofifo_done_ris_stopris(uint32_t base, uint32_t status) {
+static void libti2cit_m_isr_nofifo_done_ris_stopris(libti2cit_int_st * st, uint32_t status)
+{
 	// this happens in 2 cases:
 	// 1. finished writing 1+ bytes in libti2cit_m_isr_nofifo_send_ris(), now want to stop
 	// 2. finished writing 0 bytes, want to stop (came directly from libti2cit_m_isr_nofifo_send())
-	if (status & I2C_MIMR_STOPIM) {
-		isr_cb = 0;
-		libti2cit_m_isr_finish(I2C_MIMR_STOPIM);	// signal all done
-	}
+	if (status & I2C_MIMR_STOPIM) libti2cit_m_isr_finish(st, I2C_MIMR_STOPIM);	// signal all done
 }
-static void libti2cit_m_isr_nofifo_done_ris(uint32_t base, uint32_t status) {
+static void libti2cit_m_isr_nofifo_done_ris(libti2cit_int_st * st, uint32_t status)
+{
 	// this happens in 2 cases:
 	// 1. finished writing 1+ bytes in libti2cit_m_isr_nofifo_send_ris(), now want to read
 	// 2. wrote zero bytes, want to read (came directly from libti2cit_m_isr_nofifo_send())
-	if (status & I2C_MIMR_IM) {
-		isr_cb = 0;
-		libti2cit_m_isr_finish(I2C_MIMR_STOPIM);	// signal all done
-	}
+	if (status & I2C_MIMR_IM) libti2cit_m_isr_finish(st, I2C_MIMR_STOPIM);	// signal all done
 }
 
-static void libti2cit_m_isr_nofifo_send_ris(uint32_t base, uint32_t status) {
+static void libti2cit_m_isr_nofifo_send_ris(libti2cit_int_st * st, uint32_t status)
+{
 	if (!status & I2C_MIMR_IM) return;
-	uint32_t cmd, addr = HWREG(base + I2C_O_MSA);
-	if (isr_len) {
-		HWREG(base + I2C_O_MDR) = *(isr_buf++); // a.k.a. ROM_I2CMasterDataPut()
-		cmd = (--isr_len | (addr & 1)) ? I2C_MASTER_CMD_BURST_SEND_CONT : I2C_MASTER_CMD_BURST_SEND_FINISH;
-	} else if (addr & 1) {
-		isr_cb = libti2cit_m_isr_nofifo_done_ris;
+	uint32_t cmd;
+	if (st->nread < st->len) {
+		HWREG(st->base + I2C_O_MDR) = st->buf[st->nread]; // a.k.a. ROM_I2CMasterDataPut()
+		st->nread++;
+		cmd = ((st->nread < st->len) || (st->addr & 1)) ? I2C_MASTER_CMD_BURST_SEND_CONT : I2C_MASTER_CMD_BURST_SEND_FINISH;
+	} else if (st->addr & 1) {
+		libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_done_ris);
+		HWREG(st->base + I2C_O_MIMR) |= I2C_MIMR_STARTIM;	// a START actually will NOT happen, no interrupt will fire: abuse this bit to signal a repeated start for libti2cit_m_sync_recvpart()
 		cmd = I2C_MASTER_CMD_BURST_RECEIVE_START;
 	} else {
-		isr_cb = libti2cit_m_isr_nofifo_done_ris_stopris;
+		libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_done_ris_stopris);
 		return;
 	}
-	ROM_I2CMasterControl(base, cmd);
+	ROM_I2CMasterControl(st->base, cmd);
 }
 
 /* see description in libti2cit.h
  */
-void libti2cit_m_isr_nofifo_send(uint32_t base, uint8_t addr, uint8_t len, const uint8_t * buf, libti2cit_status_cb cb) {
+void libti2cit_m_isr_nofifo_send(libti2cit_int_st * st)
+{
 	uint8_t cmd = I2C_MASTER_CMD_QUICK_COMMAND;
-	isr_cb = libti2cit_m_isr_nofifo_done_ris_stopris;	// case 1: len == 0 && (addr & 1) == 0
+	libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_done_ris_stopris);	// case 1: len == 0 && (addr & 1) == 0
 
-	if (len) {
+	st->nread = 0;
+	if (st->len) {
 		cmd = I2C_MASTER_CMD_BURST_SEND_START;
-		isr_cb = libti2cit_m_isr_nofifo_send_ris;	// case 2: len != 0
+		libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_send_ris);	// case 2: len != 0
 
 		// the tiva i2c hardware wants the first data byte before the i2c start condition is sent
-		if (buf) HWREG(base + I2C_O_MDR) = *(buf++); // a.k.a. ROM_I2CMasterDataPut()
-		len--;
+		if (st->buf) HWREG(st->base + I2C_O_MDR) = st->buf[0]; // a.k.a. ROM_I2CMasterDataPut()
+		st->nread++;
 
-	} else if (addr & 1) {
+	} else if (st->addr & 1) {
 		cmd = I2C_MASTER_CMD_BURST_RECEIVE_START;
-		isr_cb = libti2cit_m_isr_nofifo_done_ris;	// case 3: len == 0 && (addr & 1) == 1
+		HWREG(st->base + I2C_O_MIMR) |= I2C_MIMR_STARTIM;	// a START actually will NOT happen, no interrupt will fire: abuse this bit to signal a repeated start for libti2cit_m_sync_recvpart()
+		libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_done_ris);	// case 3: len == 0 && (addr & 1) == 1
 	}
 
-	union {
-		uint8_t * p;
-		const uint8_t * c;
-	} deconstify;
-	deconstify.c = buf;
-	isr_buf = deconstify.p;	// even though buf is only ever read, isr_buf must not be const for libti2cit_m_isr_nofifo_recv()
-	isr_len = len;
-	isr_user_cb = cb;
-	isr_user_read_cb = 0;
-	HWREG(base + I2C_O_MSA) = addr;	// a.k.a. ROM_I2CMasterSlaveAddrSet()
-	ROM_I2CMasterControl(base, cmd);
+	HWREG(st->base + I2C_O_MSA) = st->addr;	// a.k.a. ROM_I2CMasterSlaveAddrSet()
+	ROM_I2CMasterControl(st->base, cmd);
 }
 
-static void libti2cit_m_isr_nofifo_recv_cb(uint32_t base, uint32_t status) {
-	if (!isr_len) {
-		if (status & I2C_MIMR_STOPIM) {
-			libti2cit_m_isr_finish(I2C_MIMR_STOPIM);	// signal all done
-			return;
-		}
+static void libti2cit_m_isr_nofifo_recv_cb(libti2cit_int_st * st, uint32_t status)
+{
+	if (st->nread >= st->len) {
 		// wait for STOPIM
+		if (!(status & I2C_MIMR_STOPIM)) return;
+
+		libti2cit_m_isr_finish(st, I2C_MIMR_STOPIM);	// signal all done
 		return;
 	}
 
 	// wait for RIS
 	if (!(status & I2C_MIMR_IM)) return;
 
-	*(isr_buf++) = HWREG(base + I2C_O_MDR) /* a.k.a. ROM_I2CMasterDataGet() */;
-	isr_len--;
-	isr_nread++;
-	ROM_I2CMasterControl(base, isr_len ? I2C_MASTER_CMD_BURST_RECEIVE_CONT : I2C_MASTER_CMD_BURST_RECEIVE_FINISH);
+	st->buf[st->nread] = HWREG(st->base + I2C_O_MDR) /* a.k.a. ROM_I2CMasterDataGet() */;
+	st->nread++;
+	ROM_I2CMasterControl(st->base, (st->nread < st->len) ? I2C_MASTER_CMD_BURST_RECEIVE_CONT : I2C_MASTER_CMD_BURST_RECEIVE_FINISH);
 }
 
 /* see description in libti2cit.h
  */
-void libti2cit_m_isr_nofifo_recv(uint32_t base, uint8_t len, uint8_t * buf, libti2cit_read_cb cb) {
-	if (!len) {	// len must be non-zero
-		ROM_I2CMasterControl(base, I2C_MASTER_CMD_FIFO_BURST_RECEIVE_ERROR_STOP);
+void libti2cit_m_isr_nofifo_recv(libti2cit_int_st * st)
+{
+	HWREG(st->base + I2C_O_MIMR) &= ~I2C_MIMR_STARTIM;	// bit was set in case libti2cit_m_sync_recvpart() would be called, clear it now
+
+	if (!st->len) {	// len cannot be zero. first byte was already received so len is at least 1!
+		ROM_I2CMasterControl(st->base, I2C_MASTER_CMD_FIFO_BURST_RECEIVE_ERROR_STOP);
 		//UARTsend("libti2cit_m_isr_nofifo_recv(0): halting.\r\n");
 		for (;;);	// deliberately freeze here to make it easy to debug
 		return;
 	}
+	st->nread = 0;
 
-	isr_nread = 0;
-	isr_buf = buf;
-	isr_len = len;
-	isr_user_cb = 0;
-	isr_user_read_cb = cb;
-	isr_cb = libti2cit_m_isr_nofifo_recv_cb;
+	libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_recv_cb);
 
 	// first byte already received by i2c hardware: read it, then check len
-	libti2cit_m_isr_nofifo_recv_cb(base, I2C_MIMR_IM);
+	libti2cit_m_isr_nofifo_recv_cb(st, I2C_MIMR_IM);
+}
+
+static void libti2cit_m_isr_nofifo_recvpart_cb(libti2cit_int_st * st, uint32_t status)
+{
+	// wait for RIS
+	if (!(status & I2C_MIMR_IM)) return;
+
+	if (st->nread >= st->len) {
+		libti2cit_m_isr_finish(st, I2C_MIMR_STOPIM);	// signal all done (but no i2c STOP occurred)
+		return;
+	}
+
+	st->buf[st->nread] = HWREG(st->base + I2C_O_MDR) /* a.k.a. ROM_I2CMasterDataGet() */;
+	st->nread++;
+	ROM_I2CMasterControl(st->base, I2C_MASTER_CMD_BURST_RECEIVE_CONT);
+}
+
+/* see description in libti2cit.h
+ */
+void libti2cit_m_isr_nofifo_recvpart(libti2cit_int_st * st)
+{
+	st->nread = 0;
+	libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_recvpart_cb);
+
+	uint32_t mimr = HWREG(st->base + I2C_O_MIMR);
+	if (mimr & I2C_MIMR_STARTIM) {	// if this is the first time calling libti2cit_m_sync_recvpart()
+		HWREG(st->base + I2C_O_MIMR) = mimr & ~I2C_MIMR_STARTIM;
+		if (!st->len) {	// first receive some bytes!
+			ROM_I2CMasterControl(st->base, I2C_MASTER_CMD_FIFO_BURST_RECEIVE_ERROR_STOP);
+			//UARTsend("libti2cit_m_isr_nofifo_recv(0): halting.\r\n");
+			for (;;);	// deliberately freeze here to make it easy to debug
+			return;
+		}
+
+		// first byte already received by i2c hardware
+		libti2cit_m_isr_nofifo_recv_cb(st, I2C_MIMR_IM);
+	} else if (!st->len) {
+		libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_recv_cb);
+		ROM_I2CMasterControl(st->base, I2C_MASTER_CMD_BURST_RECEIVE_FINISH);
+		return;
+	}
+
+	ROM_I2CMasterControl(st->base, I2C_MASTER_CMD_BURST_RECEIVE_CONT);
+	return;
 }

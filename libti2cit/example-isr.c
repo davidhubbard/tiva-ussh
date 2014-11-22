@@ -137,23 +137,35 @@ static void i2cInt_isr_dump(uint32_t status)
 	UARTsend("\r\n");
 }
 
-uint32_t scan_addr = 0, scan_found = 0, talk_count = 0, g_sysclock = 0;
+typedef struct example_isr_st_ {
+	libti2cit_int_st ti2cit;
+	uint32_t scan_addr;
+	uint32_t scan_found;
+	uint32_t talk_count;
+	uint32_t sysclock;
+} example_isr_st;
 
-static void scan_next_addr(uint32_t status);
+example_isr_st i2c2;
+
+static void scan_next_addr(libti2cit_int_st * st, uint32_t status);
 static void scan_start()
 {
-	if (scan_addr > 127) return;
+	if (i2c2.scan_addr > 127) return;
 
 	// start by assuming a device is present -- if NACK is received, then it is not present
-	scan_found = 1;
-	libti2cit_m_isr_nofifo_send(I2C2_BASE, scan_addr << 1, 0 /*len*/, 0 /*buf*/, scan_next_addr);
+	i2c2.ti2cit.buf = 0;
+	i2c2.ti2cit.user_cb = scan_next_addr;
+	i2c2.ti2cit.addr = i2c2.scan_addr << 1;
+	i2c2.ti2cit.len = 0;
+	i2c2.scan_found = 1;
+	libti2cit_m_isr_nofifo_send(&i2c2.ti2cit);
 }
 
 static void talk_to_device();
-static void scan_next_addr(uint32_t status)
+static void scan_next_addr(libti2cit_int_st * st, uint32_t status)
 {
 	if (status & I2C_MIMR_NACKIM) {
-		scan_found = 0;	// got a nack for this address
+		i2c2.scan_found = 0;	// got a nack for this address
 		return;
 	}
 
@@ -164,54 +176,61 @@ static void scan_next_addr(uint32_t status)
 		return;
 	}
 
-	if (scan_found) {
-		scan_found = 0;
+	if (i2c2.scan_found) {
+		// ACK received at i2c2.scan_addr: device found
+		i2c2.scan_found = 0;
 		ROM_UARTCharPut(UART0_BASE, '[');
 		char str[8];
-		u8tohex(str, scan_addr);
+		u8tohex(str, i2c2.scan_addr);
 		UARTsend(str);
 		ROM_UARTCharPut(UART0_BASE, ']');
 
-		// ACK received at this address: device found at scan_addr
-		libti2cit_isr_clear();
-		talk_count = 0;
+		i2c2.ti2cit.user_cb = 0;
+		i2c2.talk_count = 0;
 		talk_to_device();	// talk_to_device() will call scan_next_addr() when it is finished
 		return;
 	}
 
-	scan_addr++;
+	i2c2.scan_addr++;
 	scan_start();
 }
 
-static void talk_to_device_cb(uint32_t status);
+static void talk_to_device_cb(libti2cit_int_st * st, uint32_t status);
 static void talk_to_device()
 {
-	if (talk_count >= 10) {
+	if (i2c2.talk_count >= 10) {
 		// done talking to device, resume scanning
-		scan_next_addr(I2C_MIMR_STOPIM);
+		scan_next_addr(&i2c2.ti2cit, I2C_MIMR_STOPIM);
 		return;
 	}
 
-	libti2cit_m_isr_nofifo_send(I2C2_BASE, (scan_addr << 1) | 1, 0 /*len*/, 0 /*buf*/, talk_to_device_cb);
+	i2c2.ti2cit.buf = 0;
+	i2c2.ti2cit.user_cb = talk_to_device_cb;
+	i2c2.ti2cit.addr = (i2c2.scan_addr << 1) | 1;
+	i2c2.ti2cit.len = 0;
+	libti2cit_m_isr_nofifo_send(&i2c2.ti2cit);
 }
 
 uint8_t read_buf[4];
-static void talk_to_device_read(uint32_t status, uint32_t nread);
-static void talk_to_device_cb(uint32_t status)
+static void talk_to_device_read(libti2cit_int_st * st, uint32_t status);
+static void talk_to_device_cb(libti2cit_int_st * st, uint32_t status)
 {
 	/* TODO: to really be an interrupt example, set up a timer interrupt and run from the timer isr */
-	ROM_SysCtlDelay(g_sysclock/300);
+	ROM_SysCtlDelay(i2c2.sysclock/300);
 
-	libti2cit_m_isr_nofifo_recv(I2C2_BASE, 4, read_buf, talk_to_device_read);
+	i2c2.ti2cit.buf = read_buf;
+	i2c2.ti2cit.user_cb = talk_to_device_read;
+	i2c2.ti2cit.len = sizeof(read_buf);
+	libti2cit_m_isr_nofifo_recv(&i2c2.ti2cit);
 }
 
-static void talk_to_device_read(uint32_t status, uint32_t nread)
+static void talk_to_device_read(libti2cit_int_st * st, uint32_t status)
 {
 	if (status & I2C_MIMR_NACKIM) {
 		// retry talk_to_device()
 		UARTsend("talk nack\r\n");
-		libti2cit_isr_clear();
-		talk_count++;
+		i2c2.ti2cit.user_cb = 0;
+		i2c2.talk_count++;
 		talk_to_device();
 		return;
 	}
@@ -222,15 +241,15 @@ static void talk_to_device_read(uint32_t status, uint32_t nread)
 		return;
 	}
 
-	if (nread != 4) {
+	if (i2c2.ti2cit.nread != 4) {
 		UARTsend("talk wrong len\r\n");
-		libti2cit_isr_clear();
-		talk_count++;
+		i2c2.ti2cit.user_cb = 0;
+		i2c2.talk_count++;
 		talk_to_device();
 		return;
 	}
 
-	libti2cit_isr_clear();
+	i2c2.ti2cit.user_cb = 0;
 	ROM_UARTCharPut(UART0_BASE, ' ');
 	uint32_t v = 0;
 	char str[32];
@@ -272,28 +291,33 @@ static void talk_to_device_read(uint32_t status, uint32_t nread)
 	UARTsend(str);
 	UARTsend(" F\r\n");
 
-	if (0) hih_command_mode(g_sysclock, scan_addr, str);
+	if (0) hih_command_mode(i2c2.sysclock, i2c2.scan_addr, str);
 
 	// done talking to device, resume scanning
-	scan_next_addr(I2C_MIMR_STOPIM);
+	scan_next_addr(&i2c2.ti2cit, I2C_MIMR_STOPIM);
 }
 
 void main_isr(uint32_t sysclock)
 {
-	g_sysclock = sysclock;
+	char * p = (char *) &i2c2;
+	uint32_t len = sizeof(i2c2);
+	while (len) {
+		*(p++) = 0;
+		len--;
+	}
 
-	libti2cit_int_clear(I2C2_BASE);
+	i2c2.ti2cit.base = I2C2_BASE;
+	i2c2.sysclock = sysclock;
+	libti2cit_int_clear(&i2c2.ti2cit);
 
 	ROM_IntMasterEnable();
 	ROM_IntEnable(INT_I2C2);
-	ROM_I2CMasterIntEnableEx(I2C2_BASE, I2C_MIMR_NACKIM | I2C_MIMR_STOPIM | I2C_MIMR_ARBLOSTIM | I2C_MIMR_IM);
+	ROM_I2CMasterIntEnableEx(I2C2_BASE, I2C_MIMR_NACKIM | I2C_MIMR_STOPIM | I2C_MIMR_ARBLOSTIM | I2C_MIMR_CLKIM | I2C_MIMR_IM);
 
-	scan_addr = 0;
-	scan_found = 0;
 	scan_start();
 
-	uint32_t time_out = 1000000000lu;
-	for (; scan_addr <= 127 && time_out; ROM_SysCtlDelay(sysclock/50), time_out--) {
+	uint32_t time_out = 1000000lu;
+	for (; i2c2.scan_addr <= 127 && time_out; ROM_SysCtlDelay(sysclock/50), time_out--) {
 		ROM_UARTCharPut(UART0_BASE, '.');
 	}
 
@@ -303,21 +327,24 @@ void main_isr(uint32_t sysclock)
 		UARTsend("done\r\n");
 	}
 
-	ROM_I2CMasterIntDisable(I2C2_BASE);
+	ROM_I2CMasterIntDisable(i2c2.ti2cit.base);
 	ROM_IntDisable(INT_I2C2);
 	ROM_IntMasterDisable();
 
-	libti2cit_int_clear(I2C2_BASE);
+	libti2cit_int_clear(&i2c2.ti2cit);
 }
 
 void i2c2Int_isr()
 {
-	uint32_t status = libti2cit_m_isr_isr(I2C2_BASE);
+	uint32_t status = libti2cit_m_isr_isr(&i2c2.ti2cit);
 	if (status & LIBTI2CIT_ISR_UNEXPECTED) {
 		UARTsend("isr unexpected ");
 		i2cInt_isr_dump(status);
 	}
-	if (status & LIBTI2CIT_ISR_MCS_ARBLST) {
-		UARTsend("isr: MCS arblst\r\n");
+	if (status & I2C_MIMR_ARBLOSTIM) {
+		UARTsend("isr: arblost\r\n");
+	}
+	if (status & I2C_MIMR_CLKIM) {
+		UARTsend("isr: clk timeout\r\n");
 	}
 }
