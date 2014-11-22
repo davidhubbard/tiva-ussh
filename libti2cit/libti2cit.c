@@ -137,6 +137,25 @@ uint8_t libti2cit_m_sync_recvpart(uint32_t base, uint32_t len, uint8_t * buf)
 
 
 
+static void libti2cit_m_isr_set_isr_cb(libti2cit_int_st * st, libti2cit_status_cb cb)
+{
+	union {
+		void * as_void;
+		libti2cit_status_cb as_cb;
+	} punned;
+	punned.as_cb = cb;
+	st->private_ = punned.as_void;
+}
+static void libti2cit_m_isr_call_isr_cb(libti2cit_int_st * st, uint32_t status)
+{
+	union {
+		void * as_void;
+		libti2cit_status_cb as_cb;
+	} punned;
+	punned.as_void = st->private_;
+	punned.as_cb(st, status);
+}
+
 /* see description in libti2cit.h
  */
 uint32_t libti2cit_int_clear(libti2cit_int_st * st)
@@ -166,25 +185,6 @@ static uint32_t libti2cit_m_isr_finish(libti2cit_int_st * st, uint32_t status)
 
 	if (st->user_cb) st->user_cb(st, status);
 	return status;
-}
-
-static void libti2cit_m_isr_set_isr_cb(libti2cit_int_st * st, libti2cit_status_cb cb)
-{
-	union {
-		void * as_void;
-		libti2cit_status_cb as_cb;
-	} punned;
-	punned.as_cb = cb;
-	st->private_ = punned.as_void;
-}
-static void libti2cit_m_isr_call_isr_cb(libti2cit_int_st * st, uint32_t status)
-{
-	union {
-		void * as_void;
-		libti2cit_status_cb as_cb;
-	} punned;
-	punned.as_void = st->private_;
-	punned.as_cb(st, status);
 }
 
 /* see description in libti2cit.h
