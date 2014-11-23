@@ -5,7 +5,7 @@ This library was born because the Connected Launchpad i2c hardware state machine
 The i2c state machine of the MSP430 and AVR lines are so simple it hardly makes sense that it should
 be this hard to use i2c on the Connected Launchpad.
 
-Hopefully you can at least use this library as a starting point, since it is small and well documented.
+The goal of this library is to make your app a lot less painful to write. Huge success.
 
 **Table of Contents**
 - [Installation](#installation)
@@ -121,15 +121,38 @@ So how do you use libti2cit in your application?
     `_isr_` / `_isr_nofifo_` for the other modes. The interrupt-based functions do not have return
     values, but will indicate an error in the status argument passed to your callback in `user_cb`.
 
-5. If you initialize the launchpad i2c controller in **Slave** mode:
+libti2cit HOWTO for Slaves
+--------------------------
 
-  a. Give the slave an address in the init code.
+1. These are the Tivaware initialization steps:
+  * `SysCtlPeripheralEnable(SYSCTL_PERIPH_I2C`*n*`)` where *n* is which i2c controller you want.
+  * `SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIO`*a*`)` where *a* is which GPIO port has the i2c pins.
+  * `while (!SysCtlPeripheralReady(SYSCTL_PERIPH_I2C`*n*`));` wait for the controllers to come up.
+  * `while (!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIO`*a*`));` wait for the controllers to come up.
+  * `GPIOPinConfigure(GPIO_P`*a*`_I2C`*n*`_SDA);`
+  * `GPIOPinConfigure(GPIO_P`*a*`_I2C`*n*`_SCL);`
+  * `GPIOPinTypeI2C(GPIO_PORT`*a*`_BASE, GPIO_PIN_`*b*`);`
+  * `GPIOPinTypeI2CSCL(GPIO_PORT`*a*`_BASE, GPIO_PIN_`*b*`);`
+  * `I2CSlaveInit(I2C`*n*`, `slave address`);` to set the slave address.
+  * `libti2cit_s_int_clear();` to empty the interrupt controller of stale i2c interrupts.
+  * `IntMasterEnable();`
+  * `IntEnable(INT_I2C`*n*`);`
+  * `I2CSlaveIntEnableEx(`*base*`, I2C_SIMR_DATAIM);` Only `_DATAIM` is needed for slave mode.
+  * In your interrupt handler: `status = libti2cit_s_isr_isr();` and then check `status` for
+    `LIBTI2CIT_ISR_...` constants and `I2C_SCSR_...` constants ORed together.
   
-  b. Only call `libti2cit_s_...` functions. Do not call `libti2cit_m_...` functions in Slave mode.
+2. Only call `libti2cit_s_...` functions. Do not call `libti2cit_m_...` functions in Slave mode.
+  Of course, the example code sets up a single i2c controller in master+slave mode (loopback mode),
+  and proceeds to happily mix both kinds of function calls... but they are in separate code paths,
+  which helps, I guess.
 
-  c.
+3. There is no way to control how little or how much data the master will transfer. The slave may
+  receive an incomplete packet or may receive extra bytes; must gracefully give up on a packet if
+  the master switches back to transmittion; and must gracefully handle sending more bytes when
+  the master reads beyond the end of a packet.
 
-  d. You must check return values for any errors and stop when an error occurs.
+4. Gracefully handling master demands makes your i2c slave code more flexible, reliable, and
+  useful. The cake is a lie.
 
 Understanding i2c
 -----------------
@@ -215,8 +238,14 @@ int main()
 
 **Sending and receiving as Slave**
 
-Once you have initialized the Tiva hardware to Slave mode and set the slave's address, you
-can only wait for the master to talk to you.
+Once you have [initialized the Tiva hardware to Slave mode](libti2cit-howto-for-slaves),
+you can only hope your master wants to talk to you.
+
+Once the interrupt handler fires and you have status bits, those bits determine whether the
+master just scanned you (`I2C_SCSR_QCMDST`), wants you to transmit data (`I2C_SCSR_TREQ`),
+or wants you to receive data (`I2C_SCSR_RREQ`).
+
+Assume the proper submission position and, if the data doesn't make sense, ignore it.
 
 Advanced features like dual slave addresses and clock stretching are also possible, but not
 discussed here.
