@@ -72,6 +72,16 @@ struct libti2cit_int_st_ {
  */
 extern uint32_t libti2cit_int_clear(libti2cit_int_st * st);
 
+#define LIBTI2CIT_ISR_UNEXPECTED (0x10000000)
+
+/* libti2cit_m_isr_isr(): you MUST call libti2cit_m_isr_isr() and pass it the same libti2cit_int_st when the I2C interrupt happens
+ * each I2C base has its own interrupt handler in the interrupt vector table - install your own handler and call libti2cit_m_isr_isr()
+ * from your handler
+ *
+ * returns I2C_O_MMIS bitwise ored with LIBTI2CIT_ISR_UNEXPECTED (an interrupt happened that was not expected)
+ */
+extern uint32_t libti2cit_m_isr_isr(libti2cit_int_st * st);
+
 /* libti2cit_m_isr_nofifo_send(): i2c send a buffer and call user_cb when complete
  *   fill in libti2cit_int_st exactly like libti2cit_m_sync_send() arguments:
  *   you MUST fill in base, addr, len, buf, and user_cb in libti2cit_int_st
@@ -119,12 +129,51 @@ extern void libti2cit_m_isr_nofifo_recv(libti2cit_int_st * st);
  */
 extern void libti2cit_m_isr_nofifo_recvpart(libti2cit_int_st * st);
 
-#define LIBTI2CIT_ISR_UNEXPECTED (0x10000000)
 
-/* libti2cit_m_isr_isr(): you MUST call libti2cit_m_isr_isr() and pass it the same libti2cit_int_st when the I2C interrupt happens
- * each I2C base has its own interrupt handler in the interrupt vector table - install your own handler and call libti2cit_m_isr_isr()
- * from your handler
+
+/* libti2cit_m_isr_send(): i2c send a buffer and call user_cb when complete
+ *   fill in libti2cit_int_st exactly like libti2cit_m_sync_send() arguments:
+ *   you MUST fill in base, addr, len, buf, and user_cb in libti2cit_int_st
  *
- * returns I2C_O_MMIS bitwise ored with LIBTI2CIT_ISR_UNEXPECTED (an interrupt happened that was not expected)
+ * on success: calls user_cb(status = I2C_MIMR_IM)
+ * on failure: calls user_cb(status = I2C_MIMR_NACKIM)
+ *   len and nread will be corrupted and you should not read its contents
+ *   base, addr, buf, and user_cb will be unchanged
+ *
+ * DO NOT use libti2cit_int_st for multiple send()s and recv()s at once and DO NOT use the same base address for multiple libti2cit_int_st
+ * DO reuse the same libti2cit_int_st when doing send()s and recv()s in sequence
+ *   only read or write to the libti2cit_int_st in user_cb and after user_cb has been called
  */
-extern uint32_t libti2cit_m_isr_isr(libti2cit_int_st * st);
+extern void libti2cit_m_isr_send(libti2cit_int_st * st);
+
+/* libti2cit_m_isr_recv(): i2c receive a buffer and call user_cb when complete
+ *   fill in libti2cit_int_st exactly like libti2cit_m_sync_recv() arguments:
+ *   you MUST fill in base, addr, len, buf, and user_cb in libti2cit_int_st
+ *
+ * on success: calls user_cb(status = I2C_MIMR_IM)
+ * on failure: calls user_cb(status = I2C_MIMR_NACKIM)
+ *   len will be corrupted and you should not read its contents
+ *   base, addr, buf, and user_cb will be unchanged
+ *   nread will contain the number of bytes received -- it is possible to receive a few bytes and also fail with I2C_MIMR_NACKIM
+ *
+ * DO NOT use libti2cit_int_st for multiple send()s and recv()s at once and DO NOT use the same base address for multiple libti2cit_int_st
+ * DO reuse the same libti2cit_int_st when doing send()s and recv()s in sequence
+ *   only read or write to the libti2cit_int_st in user_cb and after user_cb has been called
+ */
+extern void libti2cit_m_isr_recv(libti2cit_int_st * st);
+
+/* libti2cit_m_isr_recvpart(): i2c receive a buffer but do not send i2c STOP -- for when the length varies based on the data
+ *   fill in libti2cit_int_st exactly like libti2cit_m_sync_recvpart() arguments:
+ *   you MUST fill in base, addr, len, buf, and user_cb in libti2cit_int_st
+ *
+ * on success: calls user_cb(status = I2C_MIMR_IM)
+ * on failure: calls user_cb(status = I2C_MIMR_NACKIM)
+ *   len will be corrupted and you should not read its contents
+ *   base, addr, buf, and user_cb will be unchanged
+ *   nread will contain the number of bytes received -- it is possible to receive a few bytes and also fail with I2C_MIMR_NACKIM
+ *
+ * DO NOT use libti2cit_int_st for multiple send()s and recv()s at once and DO NOT use the same base address for multiple libti2cit_int_st
+ * DO reuse the same libti2cit_int_st when doing send()s and recv()s in sequence
+ *   only read or write to the libti2cit_int_st in user_cb and after user_cb has been called
+ */
+extern void libti2cit_m_isr_recvpart(libti2cit_int_st * st);

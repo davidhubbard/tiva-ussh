@@ -215,6 +215,9 @@ uint32_t libti2cit_m_isr_isr(libti2cit_int_st * st)
 	return status;
 }
 
+
+
+
 static void libti2cit_m_isr_nofifo_done_ris_stopris(libti2cit_int_st * st, uint32_t status)
 {
 	// this happens in 2 cases:
@@ -355,4 +358,25 @@ void libti2cit_m_isr_nofifo_recvpart(libti2cit_int_st * st)
 
 	ROM_I2CMasterControl(st->base, I2C_MASTER_CMD_BURST_RECEIVE_CONT);
 	return;
+}
+
+
+
+
+/* see description in libti2cit.h
+ */
+void libti2cit_m_isr_send(libti2cit_int_st * st)
+{
+}
+
+/* see description in libti2cit.h
+ */
+void libti2cit_m_isr_recv(libti2cit_int_st * st)
+{
+}
+
+/* see description in libti2cit.h
+ */
+void libti2cit_m_isr_recvpart(libti2cit_int_st * st)
+{
 }

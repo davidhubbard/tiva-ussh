@@ -63,6 +63,8 @@ void UARTsend(char * str)
 
 
 extern void main_poll(uint32_t sysclock);
+extern void main_isrnofifo(uint32_t sysclock);
+extern void i2c2Int_isrnofifo();
 extern void main_isr(uint32_t sysclock);
 extern void i2c2Int_isr();
 
@@ -72,8 +74,8 @@ void i2c2IntHandler()
 {
 	switch (choice) {
 	case '1': UARTsend("bad i2c int\r\n"); break;
-	case '2': i2c2Int_isr(); break;
-	case '3':
+	case '2': i2c2Int_isrnofifo(); break;
+	case '3': i2c2Int_isr(); break;
 	case '4':
 	default: UARTsend("unhandled i2c int\r\n"); break;
 	}
@@ -128,8 +130,8 @@ int main(void) {
 
 			switch (choice) {
 			case '1': main_poll(sysclock); break;
-			case '2': main_isr(sysclock); break;
-			case '3': break;
+			case '2': main_isrnofifo(sysclock); break;
+			case '3': main_isr(sysclock); break;
 			case '4': break;
 
 			default:
