@@ -238,7 +238,7 @@ int main()
 
 **Sending and receiving as Slave**
 
-Once you have [initialized the Tiva hardware to Slave mode](libti2cit-howto-for-slaves),
+Once you have [initialized the Tiva hardware to Slave mode](#libti2cit-howto-for-slaves),
 you can only hope your master wants to talk to you.
 
 Once the interrupt handler fires and you have status bits, those bits determine whether the
