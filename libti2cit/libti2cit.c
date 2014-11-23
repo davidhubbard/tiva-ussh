@@ -176,7 +176,9 @@ uint32_t libti2cit_int_clear(libti2cit_int_st * st)
 
 static uint32_t libti2cit_m_isr_finish(libti2cit_int_st * st, uint32_t status)
 {
-	libti2cit_m_isr_set_isr_cb(st, 0);
+	// this ends internal isr_cb action, unless this is a NACK
+	// if this is a NACK, the isr_cb is still needed for the next interrupt the hardware generates
+	if (!(status & I2C_MIMR_NACKIM)) libti2cit_m_isr_set_isr_cb(st, 0);
 
 	if (!st->user_cb) {
 		//UARTsend("!isr_user_cb\r\n");
