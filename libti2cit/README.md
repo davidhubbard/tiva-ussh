@@ -134,7 +134,7 @@ So how do you use libti2cit in your application?
 Understanding i2c
 -----------------
 
-[i2cis a brilliantly simple protocol](http://en.wikipedia.org/wiki/I2C) that only uses 2 wires.
+[i2c is a brilliantly simple protocol](http://en.wikipedia.org/wiki/I2C) that only uses 2 wires.
 
 The 2 wires are:
 - SDA ("Serial Data")
