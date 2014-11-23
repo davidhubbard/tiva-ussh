@@ -49,7 +49,7 @@ Writing Your Own i2c Application
 The easiest way to write an i2c application from this code is to use `example-main.c` as a template
 and iterate until it meets your requirements.
 
-Embedded development protip: compile and flash a working build to your device, early and often.
+* Embedded development protip: compile and flash a working build to your device, early and often.
 
 libti2cit is designed to facilitate that.
 
