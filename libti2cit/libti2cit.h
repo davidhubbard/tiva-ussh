@@ -63,22 +63,27 @@ struct libti2cit_int_st_ {
 	void * private_;
 };
 
-/* libti2cit_int_clear() reads I2C_O_MMIS then writes to I2C_O_MICR to acknowledge the interrupt
+/* libti2cit_m_int_clear() reads I2C_O_MMIS then writes to I2C_O_MICR to acknowledge the interrupt
  * this is automatically called by libti2cit_m_isr_isr()
  * do NOT call this in your interrupt handler isr function - it is already taken care of
  * you probably want to call it during your setup code, before IntMasterEnable(), to clear out any stray interrupts
  *
  * you MUST fill in st->base
  */
-extern uint32_t libti2cit_int_clear(libti2cit_int_st * st);
+extern uint32_t libti2cit_m_int_clear(libti2cit_int_st * st);
 
-#define LIBTI2CIT_ISR_UNEXPECTED (0x10000000)
+#define LIBTI2CIT_ISR_S_STOP     (0x10000000)
+#define LIBTI2CIT_ISR_S_START    (0x20000000)
+#define LIBTI2CIT_ISR_UNEXPECTED (0x40000000)
 
 /* libti2cit_m_isr_isr(): you MUST call libti2cit_m_isr_isr() and pass it the same libti2cit_int_st when the I2C interrupt happens
  * each I2C base has its own interrupt handler in the interrupt vector table - install your own handler and call libti2cit_m_isr_isr()
  * from your handler
  *
- * returns I2C_O_MMIS bitwise ored with LIBTI2CIT_ISR_UNEXPECTED (an interrupt happened that was not expected)
+ * you SHOULD call libti2cit_m_isr_isr() EACH time the interrupt fires; even if the interrupt lines is shared between multiple sources
+ * libti2cit_m_isr_isr() can tell when no interrupt originated from the i2c master mode and just return 0
+ *
+ * returns I2C_O_MMIS bitwise ORed with LIBTI2CIT_ISR_UNEXPECTED (if an interrupt happened that was not expected)
  */
 extern uint32_t libti2cit_m_isr_isr(libti2cit_int_st * st);
 
@@ -177,3 +182,28 @@ extern void libti2cit_m_isr_recv(libti2cit_int_st * st);
  *   only read or write to the libti2cit_int_st in user_cb and after user_cb has been called
  */
 extern void libti2cit_m_isr_recvpart(libti2cit_int_st * st);
+
+
+
+
+
+
+/* libti2cit_s_int_clear() reads I2C_O_SMIS then writes to I2C_O_SICR to acknowledge the interrupt
+ * this is automatically called by libti2cit_s_isr_isr()
+ * do NOT call this in your interrupt handler isr function - it is already taken care of
+ * you probably want to call it during your setup code, before IntMasterEnable(), to clear out any stray interrupts
+ *
+ * you MUST fill in st->base
+ */
+extern uint32_t libti2cit_s_int_clear(libti2cit_int_st * st);
+
+/* libti2cit_s_isr_isr(): you MUST call libti2cit_s_isr_isr() and pass it the same libti2cit_int_st when the I2C interrupt happens
+ * each I2C base has its own interrupt handler in the interrupt vector table - install your own handler and call libti2cit_s_isr_isr()
+ * from your handler
+ *
+ * you SHOULD call libti2cit_s_isr_isr() EACH time the interrupt fires; even if the interrupt lines is shared between multiple sources
+ * libti2cit_s_isr_isr() can tell when no interrupt originated from the i2c slave mode and just return 0
+ *
+ * returns HWREG(st->base + I2C_O_SCSR)
+ */
+extern uint32_t libti2cit_s_isr_isr(libti2cit_int_st * st);

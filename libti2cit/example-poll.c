@@ -203,8 +203,13 @@ void main_poll(uint32_t sysclock)
 
 				hih_command_mode(sysclock, addr, str);
 				break;
+			} else if (v != 0xfffffffflu) {
+				c--;	// except for all ff's, retry indefinitely requesting a read from the device
 			}
 		}
 	}
+
+	// no slave example code in polling mode because i2c slave operation is inherently asynchronous
+
 	UARTsend("done\r\n");
 }

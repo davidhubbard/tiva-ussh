@@ -308,7 +308,7 @@ void main_isr(uint32_t sysclock)
 
 	i2c2.ti2cit.base = I2C2_BASE;
 	i2c2.sysclock = sysclock;
-	libti2cit_int_clear(&i2c2.ti2cit);
+	libti2cit_m_int_clear(&i2c2.ti2cit);
 
 	ROM_IntMasterEnable();
 	ROM_IntEnable(INT_I2C2);
@@ -331,7 +331,7 @@ void main_isr(uint32_t sysclock)
 	ROM_IntDisable(INT_I2C2);
 	ROM_IntMasterDisable();
 
-	libti2cit_int_clear(&i2c2.ti2cit);
+	libti2cit_m_int_clear(&i2c2.ti2cit);
 }
 
 void i2c2Int_isr()

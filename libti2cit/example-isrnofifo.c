@@ -12,108 +12,6 @@
 #include "driverlib/i2c.h"
 #include "driverlib/rom.h"
 
-static uint8_t hih_command_mode_retry(uint32_t sysclock, uint32_t addr, char * str)
-{
-	static const uint8_t hih_cmd_mode[] = { 0xa0, 0, 0 };
-	uint8_t r = libti2cit_m_sync_send(I2C2_BASE, addr << 1, sizeof(hih_cmd_mode)/sizeof(hih_cmd_mode[0]), hih_cmd_mode);
-	if (r) {
-		UARTsend("cmdmode nack ");
-		u8tohex(str, r);
-		UARTsend(str);
-		UARTsend("\r\n");
-		return 1;
-	}
-
-	uint8_t hih_eep_read[3] = { 0, 0, 0 };
-	uint8_t hih_eep_data[3] = { 0, 0, 0 };
-	uint32_t eep;
-
-#if 0
-	hih_eep_read[0] = 0x17 | 0x40;
-	hih_eep_read[1] = 0x9a;
-	hih_eep_read[2] = 0xcb;
-	UARTsend("eep wr ");
-	if (libti2cit_m_sync_send(I2C2_BASE, (addr << 1), sizeof(hih_eep_read)/sizeof(hih_eep_read[0]), hih_eep_read)) {
-		UARTsend("nack\r\n");
-		return 1;
-	}
-
-	hih_eep_read[1] = 0;
-	hih_eep_read[2] = 0;
-	ROM_SysCtlDelay(sysclock/832);	// wait 12ms for response
-	if (libti2cit_m_sync_send(I2C2_BASE, (addr << 1) | 1, 0, 0)) {
-		UARTsend("status nack\r\n");
-		return 1;
-	}
-	if (libti2cit_m_sync_recv(I2C2_BASE, 1, hih_eep_data)) return 1;
-
-	UARTsend(" r");
-	u8tohex(str, hih_eep_data[0]);	// must be 0x81 for success, 0x80 means still busy, 0x82 is illegal operation, all else are device failure
-	UARTsend(str);
-	UARTsend("\r\n");
-#endif
-
-	for (eep = 0; eep < 0x20; eep++) {
-		UARTsend("eep read ");
-		u8tohex(str, eep);
-		UARTsend(str);
-
-		hih_eep_read[0] = eep;
-		if (libti2cit_m_sync_send(I2C2_BASE, (addr << 1), sizeof(hih_eep_read)/sizeof(hih_eep_read[0]), hih_eep_read)) {
-			UARTsend("eepread nack\r\n");
-			return 1;
-		}
-		ROM_SysCtlDelay(sysclock/10000);	// wait 100us for response
-		if (libti2cit_m_sync_send(I2C2_BASE, (addr << 1) | 1, 0, 0)) {
-			UARTsend("eepread nack\r\n");
-			return 1;
-		}
-		if (libti2cit_m_sync_recv(I2C2_BASE, sizeof(hih_eep_data)/sizeof(hih_eep_data[0]), hih_eep_data)) return 1;
-
-		uint32_t j;
-		for (j = 0; j < 3; j++) {
-			UARTsend(" r");
-			u8tohex(str, hih_eep_data[j]);
-			UARTsend(str);
-		}
-		UARTsend("\r\n");
-	}
-	return 0;
-}
-
-static void hih_command_mode_exit(uint32_t sysclock, uint32_t addr, char * str)
-{
-	static const uint8_t hih_cmd_mode[] = { 0x80, 0, 0 };
-	uint8_t r = libti2cit_m_sync_send(I2C2_BASE, addr << 1, sizeof(hih_cmd_mode)/sizeof(hih_cmd_mode[0]), hih_cmd_mode);
-	if (r) {
-		UARTsend("cmdmode_exit nack ");
-		u8tohex(str, r);
-		UARTsend(str);
-		UARTsend("\r\n");
-	}
-
-	ROM_SysCtlDelay(sysclock/25);		// wait 40ms for device to exit command mode
-}
-
-static uint8_t hih_command_mode(uint32_t sysclock, uint32_t addr, char * str)
-{
-	ROM_GPIOPinWrite(GPIO_PORTL_BASE, GPIO_PIN_2 | GPIO_PIN_3, 0);
-	ROM_SysCtlDelay(sysclock/1000);		// wait 1ms for device to power down
-	ROM_GPIOPinWrite(GPIO_PORTL_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_3);
-	ROM_SysCtlDelay(sysclock/10000);	// wait 100us for device to power up
-
-	uint32_t n;
-	for (n = 0; n < 5; n++) {
-		if (!hih_command_mode_retry(sysclock, addr, str)) {
-			// command mode success
-			hih_command_mode_exit(sysclock, addr, str);
-			return 0;
-		}
-	}
-	UARTsend("unable to enter command mode\r\n");
-	return 1;
-}
-
 static void i2cInt_isr_dump(uint32_t status)
 {
 	static char buf[] = "status=0000";
@@ -195,6 +93,7 @@ static void scan_next_addr(libti2cit_int_st * st, uint32_t status)
 	scan_start();
 }
 
+uint8_t write_buf[] = { 0 };
 static void talk_to_device_cb(libti2cit_int_st * st, uint32_t status);
 static void talk_to_device()
 {
@@ -204,10 +103,10 @@ static void talk_to_device()
 		return;
 	}
 
-	i2c2.ti2cit.buf = 0;
+	i2c2.ti2cit.buf = write_buf;
 	i2c2.ti2cit.user_cb = talk_to_device_cb;
 	i2c2.ti2cit.addr = (i2c2.scan_addr << 1) | 1;
-	i2c2.ti2cit.len = 0;
+	i2c2.ti2cit.len = 0; //sizeof(write_buf);
 	libti2cit_m_isr_nofifo_send(&i2c2.ti2cit);
 }
 
@@ -263,6 +162,7 @@ static void talk_to_device_read(libti2cit_int_st * st, uint32_t status)
 
 	if (v & 0x40000000l) {
 		// device not ready yet
+		if (v == 0xfffffffflu) i2c2.talk_count++;	// all ff's indicates slave device has crashed
 		talk_to_device();
 		return;
 	}
@@ -291,14 +191,13 @@ static void talk_to_device_read(libti2cit_int_st * st, uint32_t status)
 	UARTsend(str);
 	UARTsend(" F\r\n");
 
-	if (0) hih_command_mode(i2c2.sysclock, i2c2.scan_addr, str);
-
 	// done talking to device, resume scanning
 	scan_next_addr(&i2c2.ti2cit, I2C_MIMR_STOPIM);
 }
 
 void main_isrnofifo(uint32_t sysclock)
 {
+	// initialize to 0
 	char * p = (char *) &i2c2;
 	uint32_t len = sizeof(i2c2);
 	while (len) {
@@ -308,16 +207,26 @@ void main_isrnofifo(uint32_t sysclock)
 
 	i2c2.ti2cit.base = I2C2_BASE;
 	i2c2.sysclock = sysclock;
-	libti2cit_int_clear(&i2c2.ti2cit);
+
+	// initialize I2C2 slave and turn on loopback mode
+	uint8_t slave_addr = 0x7f;
+	ROM_I2CSlaveInit(i2c2.ti2cit.base, slave_addr);
+	// if you enable loopback mode, it just disables the GPIO pins so they no longer carry the i2c signals
+	// internally the master and slave are always connected in a "loopback" configuration
+	//HWREG(i2c2.ti2cit.base + I2C_O_MCR) |= I2C_MCR_LPBK;
+
+	libti2cit_m_int_clear(&i2c2.ti2cit);
+	libti2cit_s_int_clear(&i2c2.ti2cit);
 
 	ROM_IntMasterEnable();
 	ROM_IntEnable(INT_I2C2);
-	ROM_I2CMasterIntEnableEx(I2C2_BASE, I2C_MIMR_NACKIM | I2C_MIMR_STOPIM | I2C_MIMR_ARBLOSTIM | I2C_MIMR_CLKIM | I2C_MIMR_IM);
+	ROM_I2CMasterIntEnableEx(i2c2.ti2cit.base, I2C_MIMR_NACKIM | I2C_MIMR_STOPIM | I2C_MIMR_ARBLOSTIM | I2C_MIMR_CLKIM | I2C_MIMR_IM);
+	ROM_I2CSlaveIntEnableEx(i2c2.ti2cit.base, /*I2C_SIMR_STARTIM | I2C_SIMR_STOPIM |*/ I2C_SIMR_DATAIM);
 
 	scan_start();
 
-	uint32_t time_out = 1000000lu;
-	for (; i2c2.scan_addr <= 127 && time_out; ROM_SysCtlDelay(sysclock/50), time_out--) {
+	uint32_t time_out = 500lu;
+	for (; i2c2.scan_addr <= 127 && time_out; ROM_SysCtlDelay(sysclock/10000), time_out--) {
 		ROM_UARTCharPut(UART0_BASE, '.');
 	}
 
@@ -327,24 +236,124 @@ void main_isrnofifo(uint32_t sysclock)
 		UARTsend("done\r\n");
 	}
 
+	ROM_I2CSlaveDisable(i2c2.ti2cit.base);
 	ROM_I2CMasterIntDisable(i2c2.ti2cit.base);
+	ROM_I2CSlaveIntDisable(i2c2.ti2cit.base);
 	ROM_IntDisable(INT_I2C2);
 	ROM_IntMasterDisable();
 
-	libti2cit_int_clear(&i2c2.ti2cit);
+	libti2cit_m_int_clear(&i2c2.ti2cit);
+	libti2cit_s_int_clear(&i2c2.ti2cit);
 }
 
+static void i2cInt_simr_dump(uint32_t status)
+{
+	static char buf[] = "status=0000";
+	u16tohex(&buf[7], status);
+	buf[11] = 0;
+	UARTsend(buf);
+
+	if (status & I2C_SIMR_DATAIM) UARTsend(" RIS");
+	if (status & I2C_SIMR_STARTIM) UARTsend(" start");
+	if (status & I2C_SIMR_STOPIM) UARTsend(" stop");
+	if (status & I2C_SIMR_DMARXIM) UARTsend(" dmaRX");
+	if (status & I2C_SIMR_DMATXIM) UARTsend(" dmaTX");
+	if (status & I2C_SIMR_TXIM) UARTsend(" tx");
+	if (status & I2C_SIMR_RXIM) UARTsend(" rx");
+	if (status & I2C_SIMR_TXFEIM) UARTsend(" txFE");
+	if (status & I2C_SIMR_RXFFIM) UARTsend(" rxFF");
+
+	UARTsend("\r\n");
+}
+
+uint8_t slave_buf[4];
+uint32_t slave_buf_pos = 0;
+uint8_t master_buf[4];
+uint32_t master_buf_pos = 0;
 void i2c2Int_isrnofifo()
 {
 	uint32_t status = libti2cit_m_isr_isr(&i2c2.ti2cit);
 	if (status & LIBTI2CIT_ISR_UNEXPECTED) {
-		UARTsend("isr unexpected ");
+		UARTsend("isr_m unexpected ");
 		i2cInt_isr_dump(status);
 	}
 	if (status & I2C_MIMR_ARBLOSTIM) {
-		UARTsend("isr: arblost\r\n");
+		UARTsend("isr_m: arblost\r\n");
 	}
 	if (status & I2C_MIMR_CLKIM) {
-		UARTsend("isr: clk timeout\r\n");
+		UARTsend("isr_m: clk timeout\r\n");
+	}
+
+	status = libti2cit_s_isr_isr(&i2c2.ti2cit);
+	if (status == LIBTI2CIT_ISR_S_START) {
+		UARTsend("starting\r\n");
+		master_buf_pos = 0;
+		slave_buf_pos = 0;
+		return;
+	}
+	if (status == LIBTI2CIT_ISR_S_STOP) {
+		UARTsend("stopped\r\n");
+		master_buf_pos = 0;
+		slave_buf_pos = 0;
+		return;
+	}
+	if (status & LIBTI2CIT_ISR_S_START) {
+		UARTsend("ign S_START ");
+	}
+	if (status & LIBTI2CIT_ISR_S_STOP) {
+		UARTsend("ign S_STOP ");
+	}
+	if (status & I2C_SCSR_QCMDST) {
+		master_buf_pos = 0;
+		slave_buf_pos = 0;
+
+		if (status & I2C_SCSR_QCMDRW) {
+			// master is requesting to read bytes
+			UARTsend("s_QUICK read\r\n");
+		} else {
+			UARTsend("s_QUICK read\r\n");
+		}
+
+		// is it possible to NAK a QCMD?
+		uint32_t sack = (HWREG(i2c2.ti2cit.base + I2C_O_SACKCTL) | I2C_SACKCTL_ACKOEN) & (~I2C_SACKCTL_ACKOVAL);
+		HWREG(i2c2.ti2cit.base + I2C_O_SACKCTL) = sack | I2C_SACKCTL_ACKOVAL;	// send NACK
+		HWREG(i2c2.ti2cit.base + I2C_O_SACKCTL) = (sack | I2C_SACKCTL_ACKOVAL) & (~I2C_SACKCTL_ACKOEN);
+	} else if (status & I2C_SCSR_QCMDRW) {
+		UARTsend("s_QUICK read outside s_QUICK ");
+	}
+
+	if (status & I2C_SCSR_RREQ) {
+		if (status & I2C_SCSR_FBR) {
+			// start of a buf from master
+			master_buf_pos = 0;
+			slave_buf_pos = 0;
+			UARTsend("s_1st ");
+		}
+		// read the byte in the buf
+		uint32_t sack = (HWREG(i2c2.ti2cit.base + I2C_O_SACKCTL) | I2C_SACKCTL_ACKOEN) & (~I2C_SACKCTL_ACKOVAL);
+		if (master_buf_pos >= sizeof(master_buf)) {
+			(void) HWREG(i2c2.ti2cit.base + I2C_O_SDR);
+			HWREG(i2c2.ti2cit.base + I2C_O_SACKCTL) = sack | I2C_SACKCTL_ACKOVAL;	// send NACK
+			UARTsend("s_NACK\r\n");
+		} else {
+			master_buf[master_buf_pos++] = HWREG(i2c2.ti2cit.base + I2C_O_SDR);
+			HWREG(i2c2.ti2cit.base + I2C_O_SACKCTL) = sack;	// send ACK
+			HWREG(i2c2.ti2cit.base + I2C_O_SACKCTL) = sack & (~I2C_SACKCTL_ACKOEN);
+			UARTsend("s_ACK\r\n");
+		}
+		// signal the non-isr code to look at the buf
+	}
+	if (status & I2C_SCSR_TREQ) {
+		UARTsend("s_TREQ ");
+		i2cInt_simr_dump(HWREG(i2c2.ti2cit.base + I2C_O_SIMR));
+
+		/* NOTE: it is a bad idea to do anything more complicated than copying data out of a buffer here
+		 * the i2c master can time out if you delay long enough before responding to a _TREQ
+		 */
+		HWREG(i2c2.ti2cit.base + I2C_O_SDR) = (slave_buf_pos >= sizeof(slave_buf)) ? 0xff : (/*slave_buf[*/slave_buf_pos++);
+		// TODO: master can NACK
+	}
+	if (status & LIBTI2CIT_ISR_UNEXPECTED) {
+		UARTsend("isr_s unexpected\r\n");
 	}
 }

@@ -158,9 +158,10 @@ static void libti2cit_m_isr_call_isr_cb(libti2cit_int_st * st, uint32_t status)
 
 /* see description in libti2cit.h
  */
-uint32_t libti2cit_int_clear(libti2cit_int_st * st)
+uint32_t libti2cit_m_int_clear(libti2cit_int_st * st)
 {
 	uint32_t status = HWREG(st->base + I2C_O_MMIS);
+	if (!status) return 0;
 
 	HWREG(st->base + I2C_O_MICR) = status;
 	if (status == I2C_MMIS_MIS) {
@@ -193,7 +194,8 @@ static uint32_t libti2cit_m_isr_finish(libti2cit_int_st * st, uint32_t status)
  */
 uint32_t libti2cit_m_isr_isr(libti2cit_int_st * st)
 {
-	uint32_t status = libti2cit_int_clear(st);
+	uint32_t status = libti2cit_m_int_clear(st);
+	if (!status) return 0;
 
 	if (status & I2C_MIMR_NACKIM) {
 		if (!st->user_cb) {
@@ -220,14 +222,14 @@ uint32_t libti2cit_m_isr_isr(libti2cit_int_st * st)
 
 static void libti2cit_m_isr_nofifo_done_ris_stopris(libti2cit_int_st * st, uint32_t status)
 {
-	// this happens in 2 cases:
+	// gets called from 2 places:
 	// 1. finished writing 1+ bytes in libti2cit_m_isr_nofifo_send_ris(), now want to stop
 	// 2. finished writing 0 bytes, want to stop (came directly from libti2cit_m_isr_nofifo_send())
 	if (status & I2C_MIMR_STOPIM) libti2cit_m_isr_finish(st, I2C_MIMR_STOPIM);	// signal all done
 }
 static void libti2cit_m_isr_nofifo_done_ris(libti2cit_int_st * st, uint32_t status)
 {
-	// this happens in 2 cases:
+	// gets called from 2 places:
 	// 1. finished writing 1+ bytes in libti2cit_m_isr_nofifo_send_ris(), now want to read
 	// 2. wrote zero bytes, want to read (came directly from libti2cit_m_isr_nofifo_send())
 	if (status & I2C_MIMR_IM) libti2cit_m_isr_finish(st, I2C_MIMR_STOPIM);	// signal all done
@@ -236,20 +238,18 @@ static void libti2cit_m_isr_nofifo_done_ris(libti2cit_int_st * st, uint32_t stat
 static void libti2cit_m_isr_nofifo_send_ris(libti2cit_int_st * st, uint32_t status)
 {
 	if (!status & I2C_MIMR_IM) return;
-	uint32_t cmd;
 	if (st->nread < st->len) {
 		HWREG(st->base + I2C_O_MDR) = st->buf[st->nread]; // a.k.a. ROM_I2CMasterDataPut()
 		st->nread++;
-		cmd = ((st->nread < st->len) || (st->addr & 1)) ? I2C_MASTER_CMD_BURST_SEND_CONT : I2C_MASTER_CMD_BURST_SEND_FINISH;
+		ROM_I2CMasterControl(st->base,
+			((st->nread < st->len) || (st->addr & 1)) ? I2C_MASTER_CMD_BURST_SEND_CONT : I2C_MASTER_CMD_BURST_SEND_FINISH);
 	} else if (st->addr & 1) {
 		libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_done_ris);
 		HWREG(st->base + I2C_O_MIMR) |= I2C_MIMR_STARTIM;	// a START actually will NOT happen, no interrupt will fire: abuse this bit to signal a repeated start for libti2cit_m_sync_recvpart()
-		cmd = I2C_MASTER_CMD_BURST_RECEIVE_START;
+		ROM_I2CMasterControl(st->base, I2C_MASTER_CMD_BURST_RECEIVE_START);
 	} else {
 		libti2cit_m_isr_set_isr_cb(st, libti2cit_m_isr_nofifo_done_ris_stopris);
-		return;
 	}
-	ROM_I2CMasterControl(st->base, cmd);
 }
 
 /* see description in libti2cit.h
@@ -379,4 +379,46 @@ void libti2cit_m_isr_recv(libti2cit_int_st * st)
  */
 void libti2cit_m_isr_recvpart(libti2cit_int_st * st)
 {
+}
+
+
+
+
+/* see description in libti2cit.h
+ */
+uint32_t libti2cit_s_int_clear(libti2cit_int_st * st)
+{
+	uint32_t status = HWREG(st->base + I2C_O_SMIS);
+	if (!status) return 0;
+	HWREG(st->base + I2C_O_SICR) = status;
+	return status;
+}
+
+/* see description in libti2cit.h
+ */
+uint32_t libti2cit_s_isr_isr(libti2cit_int_st * st)
+{
+	uint32_t status = libti2cit_s_int_clear(st);
+	if (!status) return 0;
+	if (status & (I2C_SIMR_STARTIM | I2C_SIMR_STOPIM)) {
+		UARTsend("s");
+		if (status & I2C_SIMR_STARTIM) UARTsend("_START");
+		if (status & I2C_SIMR_STOPIM) UARTsend("_STOP");
+		if (status & I2C_SIMR_DATAIM) {
+			UARTsend("_DATA: ");
+			return HWREG(st->base + I2C_O_SCSR);
+		}
+
+		UARTsend(": ");
+		uint32_t r = 0;
+		if (status & I2C_SIMR_STARTIM) r |= LIBTI2CIT_ISR_S_START;
+		if (status & I2C_SIMR_STOPIM) r |= LIBTI2CIT_ISR_S_STOP;
+		return r;
+	}
+
+	if (!(status & I2C_SIMR_DATAIM)) {
+		UARTsend("s_isr_isr not DATAIM\r\n");
+		return 0;
+	}
+	return HWREG(st->base + I2C_O_SCSR);
 }
