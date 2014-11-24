@@ -251,11 +251,11 @@ Once the interrupt handler fires and you have status bits, those bits determine 
 master just scanned you (`I2C_SCSR_QCMDST`), wants you to transmit data (`I2C_SCSR_TREQ`),
 or wants you to receive data (`I2C_SCSR_RREQ`).
 
-If the data doesn't make sense, ignore it. But do not ignore I2C_SCSR_RREQ: when this bit is set
-the i2c controller is holding the clock line until you feed it a byte. The master may freeze
-while waiting for your i2c controller will let go of the clock line.
+If the data doesn't make sense, ignore it. But do not ignore `I2C_SCSR_RREQ`: when this bit is
+set the i2c controller is holding the clock line until you feed it a byte. The master may
+freeze while waiting for your i2c controller will let go of the clock line.
 
-If you get I2C_SCSR_RREQ and do not want to send data, send 0xFF to indicate you have nothing
+If you get `I2C_SCSR_RREQ` and do not want to send data, send 0xFF to indicate you have nothing
 to say.
 
 Advanced features like dual slave addresses and clock stretching are also possible, but not
