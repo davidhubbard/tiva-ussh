@@ -5,7 +5,7 @@ This library was born because the Connected Launchpad i2c hardware state machine
 The i2c state machine of the MSP430 and AVR lines are so simple it hardly makes sense that it should
 be this hard to use i2c on the Connected Launchpad.
 
-Hopefully you can at least use this library as a starting point, since it is small and well documented.
+The goal of this library is to make your app a lot less painful to write. Huge success.
 
 **Table of Contents**
 - [Installation](#installation)
@@ -29,7 +29,7 @@ of how to assemble the flash image for a Connected Launchpad, so get it from the
 on TI.com. I found it under `examples/project/project.ld`. Copy `project.ld` into the current
 directory where this README lives.
 
-Then run `make`. You should see:
+Then run `make`. You should see something like:
 
 ```
 $ make
@@ -40,7 +40,8 @@ $
 ```
 
 Finally you can run `make lm4flash` or just run `lm4flash` yourself. This will program the
-flash image to your device.
+flash image to your device. (Advanced users may choose to program the device with another
+tool than lm4flash.)
 
 Writing Your Own i2c Application
 --------------------------------
@@ -48,13 +49,16 @@ Writing Your Own i2c Application
 The easiest way to write an i2c application from this code is to use `example-main.c` as a template
 and iterate until it meets your requirements.
 
-Embedded development protip: compile and flash a working build to your device, early and often.
+* Embedded development protip: compile and flash a working build to your device, early and often.
 
 libti2cit is designed to facilitate that.
 
 In `Makefile` you can replace all occurrences of "example-main" with your own app name. Then
 rename the `example-main.c` file to that name.
 
+Libti2cit is licensed with a liberal LGPL license to make this code as widely available as is
+possible. If you need to obtain a different license, please create an issue on the repository
+at github.com and include your contact information.
 
 libti2cit HOWTO
 ---------------
@@ -70,54 +74,90 @@ So how do you use libti2cit in your application?
   b. Reset the i2c hardware, wait for it to complete its reset, configure the pin functions, etc.
      (This is all part of the Tivaware DriverLib initialization.)
 
-3. You probably want to [understand i2c](#understanding-i2c) to make the best decisions for
-   your application design.
+3. You probably want to [understand i2c](#understanding-i2c) to correctly design your application.
+   Most of this planning only affects the init code you write using the Tiva DriverLib.
+   Here is a decision checklist:
 
   a. Master or Slave mode.
 
-  b. Hardware options:
+  b. Hardware acceleration:
     * Polling, no FIFO: the simplest way to write and debug code.
-    * Polling, FIFO Burst: slightly more efficient. Note: I decided not to implement this variant
-      in libti2cit because it has no advantage in terms of absolute power draw or system throughput.
-    * Interrupts, no FIFO: free up the Connected Launchpad to do other things (or sleep).
-    * Interrupts, FIFO Burst: slightly faster, or more time spent sleeping.
-    * Interrupts, FIFO Burst, uDMA: fastest, or most time spent sleeping.
+    * Polling, FIFO Burst: slightly more efficient. (Note: I decided not to implement this mode
+      because power use and system throughput are not that much better than the no FIFO mode.)
+    * Interrupts, no FIFO: use the interrupt controller to free up the Connected Launchpad during
+      an i2c transfer.
+    * Interrupts, FIFO Burst: add the FIFO (First-in First-out queue) so only minimal interrupts
+      are needed.
+    * Interrupts, FIFO Burst, uDMA: use uDMA instead of the interrupt handling code, so even
+      High-Speed mode transfers will not use much CPU power.
+  
+  c. Which i2c pins on the Connected Launchpad are connected to your i2c devices.
+  
+  d. Install an interrupt handler and enable interrupts for all the i2c controllers you are using.
+  
+  e. Gather the i2c device addresses and the documentation or driver source code for your devices.
 
-  There are examples for each option in `example-main.c`.
-
-4. In Master mode:
+4. If you initialize the launchpad i2c controller in **Master** mode:
 
   a. The address you send must be left-shifted by 1. The LSB or 1's bit is used to
-     signal a read or write, and is not available for addresses. In other words, i2c addresses can
-     be viewed as 0-127 (before the left-shift by 1) which become only the even numbers 0-254
-     (after the left-shift by 1).
+    signal a read or write, and is not available for addresses. In other words, i2c addresses can
+    be viewed as 0-127 (before the left-shift by 1) which become even-numbered addresses 0-254
+    (after the left-shift by 1). The odd addresses tell the slave that a read is requested.
 
-  b. Only call `libti2cit_m_send()` and `libti2cit_m_recv()` (do not call any `libti2cit_s_...` functions)
+  b. Only call `libti2cit_m_...` functions. Do not call `libti2cit_s_...` functions in Master mode.
 
-  c. Signal that you intend to read by first calling `libti2cit_m_send()` with the address LSB (1's bit)
-     set to 1. You may also send bytes at the same time. If you signal a read, do not forget to call
-     `libti2cit_m_recv()` to complete the read. The downside is that if you don't follow these rules,
-     the Connected Launchpad i2c hardware never flips the expected bits and libti2cit freezes.
+  c. You have to ask the slave for data to read by first calling `libti2cit_m_sync_send()`. This might
+    seem confusing, but it's how i2c works:
+    
+    `libti2cit_m_sync_send((address << 1) | 1)`
+    
+    The LSB is set to 1 during the send. Then call `libti2cit_m_recv()` to receive bytes from the slave.
+    The Connected Launchpad i2c hardware can get stuck and never flip the expected bits if you call
+    functions in the wrong sequence, so always call a `send()` before a `recv()`.
 
-  d. Do not blindly ignore an error returned from any libti2cit function. If an error is returned,
-     the master must give up and restart with a `libti2cit_m_send()`.
+  d. You must give up and restart from `send()` if an error occurs. Check return values.
+  
+  e. `libti2cit_m_sync_send()` is the polling (no FIFO) version. Replace `_sync_` with `_isrdma_` /
+    `_isr_` / `_isr_nofifo_` for the other modes. The interrupt-based functions do not have return
+    values, but will indicate an error in the status argument passed to your callback in `user_cb`.
 
-5. In Slave mode:
+libti2cit HOWTO for Slaves
+--------------------------
 
-  a. Only call `libti2cit_s_wait()` and other `libti2cit_s_...()` functions
-     (do not call any `libti2cit_m_...` functions)
+1. These are the Tivaware initialization steps:
+  * `SysCtlPeripheralEnable(SYSCTL_PERIPH_I2C`*n*`)` where *n* is which i2c controller you want.
+  * `SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIO`*a*`)` where *a* is which GPIO port has the i2c pins.
+  * `while (!SysCtlPeripheralReady(SYSCTL_PERIPH_I2C`*n*`));` wait for the controllers to come up.
+  * `while (!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIO`*a*`));` wait for the controllers to come up.
+  * `GPIOPinConfigure(GPIO_P`*a*`_I2C`*n*`_SDA);`
+  * `GPIOPinConfigure(GPIO_P`*a*`_I2C`*n*`_SCL);`
+  * `GPIOPinTypeI2C(GPIO_PORT`*a*`_BASE, GPIO_PIN_`*b*`);`
+  * `GPIOPinTypeI2CSCL(GPIO_PORT`*a*`_BASE, GPIO_PIN_`*b*`);`
+  * `I2CSlaveInit(I2C`*n*`, `slave address`);` to set the slave address.
+  * `libti2cit_s_int_clear();` to empty the interrupt controller of stale i2c interrupts.
+  * `IntMasterEnable();`
+  * `IntEnable(INT_I2C`*n*`);`
+  * `I2CSlaveIntEnableEx(`*base*`, I2C_SIMR_DATAIM);` Only `_DATAIM` is needed for slave mode.
+  * In your interrupt handler: `status = libti2cit_s_isr_isr();` and then check `status` for
+    `LIBTI2CIT_ISR_...` constants and `I2C_SCSR_...` constants ORed together.
+  
+2. Only call `libti2cit_s_...` functions. Do not call `libti2cit_m_...` functions in Slave mode.
+  Of course, the example code sets up a single i2c controller in master+slave mode (loopback mode),
+  and proceeds to happily mix both kinds of function calls... but they are in separate code paths,
+  which helps, I guess.
 
-  b.
+3. There is no way to control how little or how much data the master will transfer. The slave may
+  receive an incomplete packet or may receive extra bytes; must gracefully give up on a packet if
+  the master switches back to transmittion; and must gracefully handle sending more bytes when
+  the master reads beyond the end of a packet.
 
-  c.
-
-  d. Do not blindly ignore an error returned from any libti2cit function. If an error is returned,
-     the slave must give up and restart from `libti2cit_s_wait()`.
+4. Gracefully handling master demands makes your i2c slave code more flexible, reliable, and
+  useful. The cake is a lie.
 
 Understanding i2c
 -----------------
 
-[i2cis a brilliantly simple protocol](http://en.wikipedia.org/wiki/I2C) that only uses 2 wires.
+[i2c is a brilliantly simple protocol](http://en.wikipedia.org/wiki/I2C) that only uses 2 wires.
 
 The 2 wires are:
 - SDA ("Serial Data")
@@ -129,75 +169,94 @@ not described here.
 
 After all your devices are connected to SDA and SCL, you must decide which devices are to be a "master"
 and which are to be a "slave." Don't worry: electronic devices don't have feelings and are perfectly happy
-to be enslaved on an i2c bus. **Master devices are in charge of initiating everything.** Also, most i2c
-devices you might try to hook up to your Connected Launchpad are slaves and cannot be a master anyway.
+to be enslaved on an i2c bus. **Master devices are responsible for starting (who, what, when, where) and
+ending every transaction that goes across the bus.** Also, most i2c devices you might try to hook up to
+your Connected Launchpad are slaves and cannot be a master anyway. However, the Connected Launchpad can
+be set up as a slave too, if that better fits your design.
 
 An i2c slave can never spontaneously send data to its master. This may mean the master has to check
 back with the slave constantly, which becomes a lot of work for the master. But it can keep your code
 clean because the master controls all the timing.
 
-If you start to have a lot of devices you might want to tell your Connected Launchpad to sometimes
-be a slave and sometimes be a master. In that case you must carefully test your collision logic (the
-stuff that i2c does when two masters try to initiate something at the same time.) And if you're doing
-it that way, you're way past needing me to explain things to you. :)
+An i2c master does not have an address. Usually one i2c bus has only one i2c master, and I'm going to
+leave out the explanations for a bus with multiple masters. I'll only say, for illustration purposes,
+that if a bus has 2 masters, they can listen to each other's conversations but they cannot directly
+talk to each other.
 
-**The simple case: master mode**
+**The simple case: Launchpad in Master mode**
 
-Since almost everyone using libti2cit wants to run in master mode, this explanation assumes the
-Connected Launchpad is in master mode. But libti2cit works both as a master and as a slave.
+Since almost everyone using libti2cit wants to run the Launchpad as the i2c master, in this section
+we will assume the Launchpad has been initialized in master mode. See the Tivaware example code and
+Processor Data Sheet from TI for initialization instructions.
+libti2cit works both for master and slave mode.
 
-In master mode, you call `libti2cit_m_send()`. The `m` is for master, and `libti2cit_m_send()` is what wakes up
-all the slaves and takes command of the bus. This is called an I2C START.
+In master mode, you call `libti2cit_m_sync_send()`. The `m` is for master, and
+`libti2cit_m_sync_send()` is what wakes up all the slaves and takes command of the bus. This
+is called an i2c START.
 
-First the master sends I2C START, then it sends an address, then some bytes, and last of all
-(if the master wants to receive bytes), a slave starts talking and sends bytes to the
-master.
+First the master sends i2c START, then it sends an address, then zero or more bytes of data, and
+last of all (if the master wants to receive bytes), the slave at the address can start talking and
+sends data to the master.
 
-The master can "let go of the i2c bus" by sending an I2C STOP at any time. A slave can only talk when
-the master asks to receive bytes, and asks for the address of that slave device.
+The master can "let go of the i2c bus" by sending an i2c STOP at any time. A slave can only talk when
+the master sends the address of that slave device, and must continue sending bytes until the master
+sends the i2c STOP.
 
 **Receiving as Master**
 
-Say you are the master. Say you want to read something. You can't just `libti2cit_m_recv()` anywhere.
-You actually must `libti2cit_m_send()` first, then `libti2cit_m_recv()`, and probably you must tell the
-slave during the `libti2cit_m_send()` how many bytes you will be reading.
+Say you are the master. Say you want to read something. You can't just `libti2cit_m_sync_recv()`,
+but must call `libti2cit_m_sync_send()` first. The address must be ORed with 1 to ask to receive
+data from the slave. Finally you can call `libti2cit_m_sync_recv()`. Also look at the slave device's
+datasheet or library source code and examples. Each device will want different bytes during the
+`send()` and `recv()` stages of an i2c bus transaction.
 
-`libti2cit_m_send()` takes as a parameter an address. The LSB (with a value of 1) of the address must
-be set to 1 to tell the slave to prepare for a read. Carefully study the slave's datasheet and
-documentation to find out if you must also supply the number of bytes to the slave.
-
-The `libti2cit_m_recv()` will happily read forever, even bogus data the slave did not send.
-The i2c bus does not include a signal **from the slave** saying that `libti2cit_m_recv()` succeeded or
-failed. Only the received data itself can be taken as a success or a failure.
-(Typically a value of 255 or 0xff indicates failure because that is what the bus looks like
+The `libti2cit_m_sync_recv()` will happily read forever, even bogus data the slave did not send.
+The i2c bus does not include a signal **from the slave** saying that `libti2cit_m_sync_recv()`
+succeeded or failed. The received data must be checked for validity, and if invalid, thrown out.
+(Typically a value of 255 or 0xff indicates failure because that is what the i2c bus looks like
 when no one is talking at all.)
+
+The Tivaware example code and Processor Data Sheet from TI include important details you must
+understand to correctly initialize the i2c controllers you want to use.
 
 **Scanning the Bus as Master**
 
-One interesting thing the i2c Master can do is scan the bus. If the master sends an I2C START,
-an address, and immediately an I2C STOP, it receives only one bit from each address. Almost all
-i2c Slaves set the bit to say "I am here," so this can be used to scan the bus.
+One interesting thing the i2c master can do is scan the bus. If the master sends an i2c START,
+an address, and immediately an i2c STOP, the slave at each address is required to respond if
+present. The slave sends no data, just an "I am here," so this can be used to scan the bus.
+Some i2c slave devices (specifically SMBus devices) power on/off each time they are scanned
+in this manner.
 
-Here is some example code:
+Here is an example of scanning the bus:
 
 ```
+int main()
   init_i2c();
 
   uint32_t addr;
   for (addr = 0; addr < 128; addr++) {
-    if (libti2cit_m_send(base, addr << 1, 0, 0)) continue;
+    if (libti2cit_m_sync_send(base, addr << 1, 0 /*len*/, 0 /*buf ptr*/)) continue;
     UARTprintf("found %u\r\n", addr);
   }
+  return 0;
+}
 ```
 
 **Sending and receiving as Slave**
 
-Slave mode works differently. `libti2cit_s_wait()`
-may notice they do not need an address. You set the slave address using the Tivaware DriverLib,
-and wait for the master to talk to you.
+Once you have [initialized the Tiva hardware to Slave mode](#libti2cit-howto-for-slaves),
+you can only hope your master wants to talk to you.
 
-Advanced features like dual slave addresses and clock stretching are also possible, but not
-discussed here.
+Once the interrupt handler fires and you have status bits, those bits determine whether the
+master just scanned you (`I2C_SCSR_QCMDST`), wants you to transmit data (`I2C_SCSR_TREQ`),
+or wants you to receive data (`I2C_SCSR_RREQ`).
+
+If the data doesn't make sense, ignore it. But do not ignore `I2C_SCSR_RREQ`: when this bit is
+set the i2c controller is holding the clock line until you feed it a byte. The master may
+freeze while waiting for your i2c controller will let go of the clock line.
+
+If you get `I2C_SCSR_RREQ` and do not want to send data, send 0xFF to indicate you have nothing
+to say.
 
 License
 -------
