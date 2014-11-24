@@ -258,9 +258,6 @@ freeze while waiting for your i2c controller will let go of the clock line.
 If you get `I2C_SCSR_RREQ` and do not want to send data, send 0xFF to indicate you have nothing
 to say.
 
-Advanced features like dual slave addresses and clock stretching are also possible, but not
-discussed here.
-
 License
 -------
 
