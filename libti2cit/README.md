@@ -169,33 +169,38 @@ not described here.
 
 After all your devices are connected to SDA and SCL, you must decide which devices are to be a "master"
 and which are to be a "slave." Don't worry: electronic devices don't have feelings and are perfectly happy
-to be enslaved on an i2c bus. **Master devices are in charge of initiating everything.** Also, most i2c
-devices you might try to hook up to your Connected Launchpad are slaves and cannot be a master anyway.
+to be enslaved on an i2c bus. **Master devices are responsible for starting (who, what, when, where) and
+ending every transaction that goes across the bus.** Also, most i2c devices you might try to hook up to
+your Connected Launchpad are slaves and cannot be a master anyway. However, the Connected Launchpad can
+be set up as a slave too, if that better fits your design.
 
 An i2c slave can never spontaneously send data to its master. This may mean the master has to check
 back with the slave constantly, which becomes a lot of work for the master. But it can keep your code
 clean because the master controls all the timing.
 
-If you start to have a lot of devices you might want to tell your Connected Launchpad to sometimes
-be a slave and sometimes be a master. In that case you must carefully test your collision logic (the
-stuff that i2c does when two masters try to initiate something at the same time.) And if you're doing
-it that way, you're way past needing me to explain things to you. :)
+An i2c master does not have an address. Usually one i2c bus has only one i2c master, and I'm going to
+leave out the explanations for a bus with multiple masters. I'll only say, for illustration purposes,
+that if a bus has 2 masters, they can listen to each other's conversations but they cannot directly
+talk to each other.
 
-**The simple case: Master mode**
+**The simple case: Launchpad in Master mode**
 
-Since almost everyone using libti2cit wants to run in master mode, this explanation assumes the
-Connected Launchpad is in master mode. But libti2cit works both as a master and as a slave.
+Since almost everyone using libti2cit wants to run the Launchpad as the i2c master, in this section
+we will assume the Launchpad has been initialized in master mode. See the Tivaware example code and
+Processor Data Sheet from TI for initialization instructions.
+libti2cit works both for master and slave mode.
 
 In master mode, you call `libti2cit_m_sync_send()`. The `m` is for master, and
 `libti2cit_m_sync_send()` is what wakes up all the slaves and takes command of the bus. This
-is called an I2C START.
+is called an i2c START.
 
-First the master sends I2C START, then it sends an address, then some bytes, and last of all
-(if the master wants to receive bytes), a slave starts talking and sends bytes to the
-master.
+First the master sends i2c START, then it sends an address, then zero or more bytes of data, and
+last of all (if the master wants to receive bytes), the slave at the address can start talking and
+sends data to the master.
 
-The master can "let go of the i2c bus" by sending an I2C STOP at any time. A slave can only talk when
-the master asks to receive bytes, and asks for the address of that slave device.
+The master can "let go of the i2c bus" by sending an i2c STOP at any time. A slave can only talk when
+the master sends the address of that slave device, and must continue sending bytes until the master
+sends the i2c STOP.
 
 **Receiving as Master**
 
@@ -211,17 +216,18 @@ succeeded or failed. The received data must be checked for validity, and if inva
 (Typically a value of 255 or 0xff indicates failure because that is what the i2c bus looks like
 when no one is talking at all.)
 
-The Tiva example code and Processor Data Sheet from TI include important details you must
-take into account when initializing your chosen i2c devices.
+The Tivaware example code and Processor Data Sheet from TI include important details you must
+understand to correctly initialize the i2c controllers you want to use.
 
 **Scanning the Bus as Master**
 
-One interesting thing the i2c Master can do is scan the bus. If the master sends an I2C START,
-an address, and immediately an I2C STOP, the slave at each address is required to respond if
+One interesting thing the i2c master can do is scan the bus. If the master sends an i2c START,
+an address, and immediately an i2c STOP, the slave at each address is required to respond if
 present. The slave sends no data, just an "I am here," so this can be used to scan the bus.
-Some i2c slave devices (specifically SMBus devices) power on/off when scanned in this manner.
+Some i2c slave devices (specifically SMBus devices) power on/off each time they are scanned
+in this manner.
 
-Here is some example code that scans the bus:
+Here is an example of scanning the bus:
 
 ```
 int main()
@@ -245,7 +251,12 @@ Once the interrupt handler fires and you have status bits, those bits determine 
 master just scanned you (`I2C_SCSR_QCMDST`), wants you to transmit data (`I2C_SCSR_TREQ`),
 or wants you to receive data (`I2C_SCSR_RREQ`).
 
-Assume the proper submission position and, if the data doesn't make sense, ignore it.
+If the data doesn't make sense, ignore it. But do not ignore I2C_SCSR_RREQ: when this bit is set
+the i2c controller is holding the clock line until you feed it a byte. The master may freeze
+while waiting for your i2c controller will let go of the clock line.
+
+If you get I2C_SCSR_RREQ and do not want to send data, send 0xFF to indicate you have nothing
+to say.
 
 Advanced features like dual slave addresses and clock stretching are also possible, but not
 discussed here.
