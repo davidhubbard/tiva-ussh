@@ -20,6 +20,8 @@
 #include "driverlib/sysctl.h"
 #include "driverlib/gpio.h"
 
+#include "inc/hw_i2c.h"
+
 const uint8_t lookup_hex[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
 void u8tohex(char * out, uint32_t n)
 {
@@ -65,19 +67,31 @@ void UARTsend(char * str)
 extern void main_poll(uint32_t sysclock);
 extern void main_isrnofifo(uint32_t sysclock);
 extern void i2c2Int_isrnofifo();
+extern void i2c7Int_isrnofifo();
 extern void main_isr(uint32_t sysclock);
 extern void i2c2Int_isr();
+extern void i2c7Int_isr();
 
 // select who receives i2c interrupts. Note: The hardware can do this for you in the NVIC, much faster.
 uint32_t choice;
 void i2c2IntHandler()
 {
 	switch (choice) {
-	case '1': UARTsend("bad i2c int\r\n"); break;
+	case '1': UARTsend("bad i2c2 int\r\n"); break;
 	case '2': i2c2Int_isrnofifo(); break;
 	case '3': i2c2Int_isr(); break;
 	case '4':
-	default: UARTsend("unhandled i2c int\r\n"); break;
+	default: UARTsend("unhandled i2c2 int\r\n"); break;
+	}
+}
+void i2c7IntHandler()
+{
+	switch (choice) {
+	case '1': UARTsend("bad i2c7 int\r\n"); break;
+	case '2': i2c7Int_isrnofifo(); break;
+	case '3': i2c7Int_isr(); break;
+	case '4':
+	default: UARTsend("unhandled i2c7 int\r\n"); break;
 	}
 }
 
@@ -88,17 +102,24 @@ int main(void) {
 		sysclock = ROM_SysCtlClockFreqSet(SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120*1000*1000);
 	} while (!sysclock);
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_I2C2);
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_I2C7);
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOL);
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
 	while (!ROM_SysCtlPeripheralReady(SYSCTL_PERIPH_I2C2)) ;
 	while (!ROM_SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOL)) ;
+	while (!ROM_SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOD)) ;
 	while (!ROM_SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOA)) ;
 	while (!ROM_SysCtlPeripheralReady(SYSCTL_PERIPH_UART0)) ;
 	ROM_GPIOPinConfigure(GPIO_PL0_I2C2SDA);
 	ROM_GPIOPinConfigure(GPIO_PL1_I2C2SCL);
+	ROM_GPIOPinConfigure(GPIO_PD1_I2C7SDA);
+	ROM_GPIOPinConfigure(GPIO_PD0_I2C7SCL);
 	ROM_GPIOPinTypeI2C(GPIO_PORTL_BASE, GPIO_PIN_0);
 	ROM_GPIOPinTypeI2CSCL(GPIO_PORTL_BASE, GPIO_PIN_1);
+	ROM_GPIOPinTypeI2C(GPIO_PORTD_BASE, GPIO_PIN_1);
+	ROM_GPIOPinTypeI2CSCL(GPIO_PORTD_BASE, GPIO_PIN_0);
 	HWREG(GPIO_PORTL_BASE + GPIO_O_PUR) |= GPIO_PIN_0 | GPIO_PIN_1;
 	ROM_I2CMasterInitExpClk(I2C2_BASE, sysclock, true /*400kHz*/);
 	ROM_I2CMasterGlitchFilterConfigSet(I2C2_BASE, I2C_MASTER_GLITCH_FILTER_DISABLED);
@@ -132,7 +153,15 @@ int main(void) {
 			case '1': main_poll(sysclock); break;
 			case '2': main_isrnofifo(sysclock); break;
 			case '3': main_isr(sysclock); break;
-			case '4': break;
+			case '4':
+				UARTsend("about to set MCR\r\n");
+				HWREG(I2C7_BASE + I2C_O_MCR) |= I2C_MCR_SFE;
+				UARTsend("about to set SCSR\r\n");
+				HWREG(I2C7_BASE + I2C_O_SCSR) = I2C_SCSR_DA;
+				UARTsend("about to set SOAR\r\n");
+				HWREG(I2C7_BASE + I2C_O_SOAR) = 0x7f;
+				UARTsend("done\r\n");
+				break;
 
 			default:
 				UARTsend("Unknown key pressed.\r\n");

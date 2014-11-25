@@ -348,3 +348,8 @@ void i2c2Int_isr()
 		UARTsend("isr: clk timeout\r\n");
 	}
 }
+
+void i2c7Int_isr()
+{
+	UARTsend("TODO: i2c7Int_isr()\r\n");
+}

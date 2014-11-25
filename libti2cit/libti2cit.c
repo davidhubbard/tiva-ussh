@@ -51,7 +51,7 @@ uint8_t libti2cit_m_sync_send(uint32_t base, uint8_t addr, uint32_t len, const u
 
 		HWREG(base + I2C_O_MSA) = addr;	// a.k.a. ROM_I2CMasterSlaveAddrSet()
 		ROM_I2CMasterControl(base, cmd);
-		while (!ROM_I2CMasterBusy(base));
+		while (!ROM_I2CMasterBusy(base));	// see http://e2e.ti.com/support/microcontrollers/tiva_arm/f/908/t/368493.aspx
 		if (libti2cit_mris_wait(base, mris_want, mris_want) & I2C_MRIS_NACKRIS) return 1;
 		if (HWREG(base + I2C_O_MCS) & I2C_MCS_ARBLST) return 2;
 		if (!len) return 0;

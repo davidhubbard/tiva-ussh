@@ -25,6 +25,7 @@ static void NmiSR();
 static void FaultISR();
 static void IntDefaultHandler();
 extern void i2c2IntHandler();
+extern void i2c7IntHandler();
 
 
 
@@ -156,7 +157,7 @@ __attribute__ ((section(".isr_vector"))) int_vector_t int_vector_table[] =
 	IntDefaultHandler,                      // 116: 16/32-Bit Timer 7A (TM4C123 Wide Timer 3 subtimer A)
 	IntDefaultHandler,                      // 117: 16/32-Bit Timer 7B (TM4C123 Wide Timer 3 subtimer B)
 	IntDefaultHandler,                      // 118: I2C6 (TM4C123 Wide Timer 4 subtimer A)
-	IntDefaultHandler,                      // 119: I2C7 (TM4C123 Wide Timer 4 subtimer B)
+	i2c7IntHandler,                         // 119: I2C7 (TM4C123 Wide Timer 4 subtimer B)
 	IntDefaultHandler,                      // 120: (TM4C123 Wide Timer 5 subtimer A)
 	IntDefaultHandler,                      // 121: 1-Wire (TM4C123 Wide Timer 5 subtimer B)
 	IntDefaultHandler,                      // 122: (TM4C123 FPU)
