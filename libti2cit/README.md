@@ -114,6 +114,9 @@ So how do you use libti2cit in your application?
     The LSB is set to 1 during the send. Then call `libti2cit_m_recv()` to receive bytes from the slave.
     The Connected Launchpad i2c hardware can get stuck and never flip the expected bits if you call
     functions in the wrong sequence, so always call a `send()` before a `recv()`.
+  
+    Note: You can send 0 bytes! You still need to call `send()` to send the START and the address.
+    Then you can start receiving bytes from the slave after that.
 
   d. You must give up and restart from `send()` if an error occurs. Check return values.
   
@@ -196,11 +199,12 @@ is called an i2c START.
 
 First the master sends i2c START, then it sends an address, then zero or more bytes of data, and
 last of all (if the master wants to receive bytes), the slave at the address can start talking and
-sends data to the master.
+sends data to the master. This pattern is used any time any data is sent or received on the bus,
+since the master can both send and receive before sending an i2c STOP.
 
-The master can "let go of the i2c bus" by sending an i2c STOP at any time. A slave can only talk when
-the master sends the address of that slave device, and must continue sending bytes until the master
-sends the i2c STOP.
+The master "lets go" of the i2c bus by sending an i2c STOP at any time. A slave can only talk when
+it hears its address from the master, and must continue sending bytes until the master sends the i2c
+STOP. Slaves are kind of stuck doing whatever they're told.
 
 **Receiving as Master**
 
